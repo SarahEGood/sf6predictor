@@ -1,6 +1,20 @@
 import pandas as pd
 
 def eloFormula(rating1, rating2, result1, result2, k=30):
+    """
+    Calculate the new Elo ratings for two players based on their match results.
+
+    Args:
+    rating1 (float): Current Elo rating of the first player.
+    rating2 (float): Current Elo rating of the second player.
+    result1 (int): Match standing for the first player (1 for win, 2 for loss).
+    result2 (int): Match standing for the second player (1 for win, 2 for loss).
+    k (int, optional): The maximum possible adjustment per game, defaults to 30.
+
+    Returns:
+    tuple: A tuple containing the new Elo ratings for the first and second players.
+    """
+
     est1 = 1 / (1 + 10**((rating2-rating1)/400))
     est2 = 1 / (1 + 10**((rating1-rating2)/400))
 
@@ -17,12 +31,25 @@ def eloFormula(rating1, rating2, result1, result2, k=30):
     return new1, new2
 
 def eloPoolsFormula(ratings, wins, losses, k=30):
+    """
+    Adjusts the Elo ratings for a pool of players based on their collective wins and losses.
+
+    Args:
+    ratings (list of float): Current Elo ratings of all players in the pool.
+    wins (list of int): Number of wins for each player in the pool.
+    losses (list of int): Number of losses for each player in the pool.
+    k (int, optional): The maximum possible adjustment per game, defaults to 30.
+
+    Returns:
+    list: New Elo ratings for all players in the pool.
+    """
+
     total_wins = sum(wins)
     total_losses = sum(losses)
     
     # Calculate sum of ratings weighted by wins and losses
-    total_rating_wins = sum(r[i] * wins[i] for i in range(len(ratings)))
-    total_rating_losses = sum(r[i] * losses[i] for i in range(len(ratings)))
+    total_rating_wins = sum(ratings[i] * wins[i] for i in range(len(ratings)))
+    total_rating_losses = sum(ratings[i] * losses[i] for i in range(len(ratings)))
     
     # Calculate average Elo of those who were won against and those who lost
     if total_wins > 0:
@@ -51,7 +78,17 @@ def eloPoolsFormula(ratings, wins, losses, k=30):
 
 # Function to get user_id from dataframes
 def getSetElo(row, player_lookup, elo_lookup):
-    #print(row)
+    """
+    Retrieve or initialize Elo rating for a player based on event and player lookup tables.
+
+    Args:
+    row (pandas.Series): Data containing user_id, standing, entrant_name, and event_id.
+    player_lookup (pandas.DataFrame): DataFrame mapping player names to user IDs.-
+    elo_lookup (pandas.DataFrame): DataFrame maintaining Elo ratings by user_id and event_id.
+
+    Returns:
+    dict or None: Returns a dictionary with user and event details including Elo or None if user cannot be found.
+    """
     user_id = row['user_id'][0]
     standing = row['standing'][0]
     user_name = row['entrant_name'][0]
@@ -89,8 +126,21 @@ def getSetElo(row, player_lookup, elo_lookup):
             'elo': elo,
             'new_elo_flag': new_elo_flag}
 
-'''Updates ELO table'''
 def reviseElo(user_id_1, user_id_2, elo1, elo2, event_id, elo_lookup):
+    """
+    Updates the Elo ratings for two players in the lookup table after a match.
+
+    Args:
+    user_id_1 (int): User ID of the first player.
+    user_id_2 (int): User ID of the second player.
+    elo1 (float): New Elo rating of the first player.
+    elo2 (float): New Elo rating of the second player.
+    event_id (int): ID of the event where the match occurred.
+    elo_lookup (pandas.DataFrame): DataFrame containing the Elo ratings.
+
+    Returns:
+    pandas.DataFrame: Updated DataFrame with new Elo ratings.
+    """
     user_list = [{'user_id': user_id_1,
                   'elo': elo1},
                   {'user_id': user_id_2,
@@ -107,9 +157,18 @@ def reviseElo(user_id_1, user_id_2, elo1, elo2, event_id, elo_lookup):
 
     return elo_lookup
 
-'''Takes a dataframe subsetted by set'''
 def calcEloForSet(df, elo_lookup, player_lookup):
-    # Check if dataframe slice is two length before looping
+    """
+    Processes a set (match between two players) to update Elo ratings.
+
+    Args:
+    df (pandas.DataFrame): DataFrame representing a single set.
+    elo_lookup (pandas.DataFrame): DataFrame containing Elo ratings.
+    player_lookup (pandas.DataFrame): DataFrame mapping player names to user IDs.
+
+    Returns:
+    pandas.DataFrame: Updated Elo lookup table after processing the set.
+    """
     if len(df) == 2:
         # Retrieve Elo from user id and lookup tables
         print(df)
@@ -130,6 +189,10 @@ def calcEloForSet(df, elo_lookup, player_lookup):
         else:
             return elo_lookup
 
+# Example usage:
+# Assuming you have a pandas DataFrame `matches` with appropriate columns and `elo_lookup`, `player_lookup` DataFrames ready.
+# results_elo = calcEloForSet(matches, elo_lookup, player_lookup)
+
 def calcEloForEvent(df, event_id, elo_lookup, player_lookup):
     # Filter to event_id
     df_events = df.loc[df['event_id'] == event_id]
@@ -144,13 +207,29 @@ def calcEloForEvent(df, event_id, elo_lookup, player_lookup):
 
     return elo_lookup
 
-'''Func to get list of ordered event_ids by date'''
 def getEventList(path):
+    """
+    Reads a CSV file containing event data and returns a DataFrame with event IDs ordered by their start dates.
+
+    Args:
+    path (str): Path to the CSV file containing the event data.
+
+    Returns:
+    pandas.DataFrame: DataFrame containing columns for 'start_at' (event start date) and 'event_id', sorted by 'start_at'.
+    """
     events = pd.read_csv(path)[['start_at', 'event_id']].sort_values('start_at')
     return events
 
-'''Wrapper to iterate through all event_ids'''
 def calcEloWrapper(set_path='all_sets.csv', player_path='players.csv', event_path='events.csv'):
+    """
+    Processes Elo rating updates for all events specified in a given imported dataframe. It reads the event, player, and set data,
+    updates Elo ratings for each event, and saves the final Elo ratings to CSV files.
+
+    Args:
+    set_path (str, optional): Path to the CSV file containing match sets. Defaults to 'all_sets.csv'.
+    player_path (str, optional): Path to the CSV file containing player information. Defaults to 'players.csv'.
+    event_path (str, optional): Path to the CSV file containing event information. Defaults to 'events.csv'.
+    """
     events = getEventList(event_path)
     player_lookup = pd.read_csv(player_path)
     df = pd.read_csv(set_path)
@@ -165,14 +244,19 @@ def calcEloWrapper(set_path='all_sets.csv', player_path='players.csv', event_pat
     current_elo = current_elo.merge(p_uniques, how='left', on='user_id')
     current_elo.to_csv('current_elo.csv')
 
-'''Calculate Tournament Participation Rates (locals and higher tiers)'''
 def calcEventParticipation(elo_records='elo_records.csv', event_path='events.csv'):
-    # Read in data
+    """
+    Calculates and prints the count of participants in events grouped by their competition tier, based on the Elo ratings record.
+
+    Args:
+    elo_records (str, optional): Path to the CSV file containing Elo records. Defaults to 'elo_records.csv'.
+    event_path (str, optional): Path to the CSV file containing event information. Defaults to 'events.csv'.
+    """
     events = pd.read_csv(event_path)
     elo_df = pd.read_csv(elo_records)
 
-    df = events.groupby('competitionTier').count()
+    df = events.groupby('competition_tier').count()
     print(df)
 
-calcEloWrapper()
-#calcEventParticipation()
+#calcEloWrapper()
+calcEventParticipation()
