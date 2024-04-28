@@ -7,6 +7,15 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 def check_guest(value):
+    """
+    Checks if a value is 0 or null (for checking if a user id was pulled for a specific user)
+
+    Args:
+        value: Value to check if 0 or missing
+
+    Returns:
+        String "Yes" or "No" depending on if value is 0 or null (or not)
+    """
     if pd.isna(value) or value == 0:
         return 'Yes'
     else:
@@ -44,8 +53,8 @@ def startgg_vars():
 def eventsByVideogame():
     """
     Fetches and processes a list of events by videogame from the start.gg GraphQL API.
-    Retrieves events associated with a specific videogame, organizes them into a pandas DataFrame,
-    and writes the data to a CSV file.
+    Retrieves events associated with a specific videogame (Street Fighter 6),organizes
+    them into a pandas DataFrame, and writes the data to a CSV file.
 
     Returns:
         DataFrame: A DataFrame containing data about events, including event IDs, names, slugs,
@@ -81,15 +90,18 @@ def eventsByVideogame():
         }
     }"""
 
+    # Setup initial values and session variables
     cursor = 1
     videogame_id = 43868  # Street Fighter 6 game id in start.gg database
     headers = {'Authorization': 'Bearer ' + token}
     adapter = HTTPAdapter(max_retries=retryStrategy())
     session = requests.Session()
+
+    # Allow useage of http and https
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
-    # Init dataframe
+    # Intialize dataframe
     df = pd.DataFrame({
         'event_id': [],
         'event_name': [],
@@ -117,6 +129,7 @@ def eventsByVideogame():
             "videogameId": videogame_id
         }
 
+        # Attempt to parse tournament data from returned query
         try:
             response = session.post(api_endpoint, json={'query': query, 'variables': variables}, headers=headers)
             response.raise_for_status()
@@ -139,11 +152,13 @@ def eventsByVideogame():
                 'data_type': 'Brackets'
             } for tournament in tournaments for event in tournament['events'] if event['videogame']['id'] == videogame_id]
 
+            # Concatenate resulting data to dataframe
             df_temp = pd.DataFrame(result_list)
             df = pd.concat([df, df_temp]).drop_duplicates()
 
             if len(tournaments) < 10 or newest_event_id in df['event_id'].unique():  # If fewer tournaments than perPage, assume it's the last page
                 break
+        # If the request fails, return error message
         except Exception as e:
             print(f"Request failed: {e}")
             break
@@ -169,8 +184,11 @@ def getSetsByEvent(event_id):
         DataFrame: A DataFrame containing set data including set IDs, entrant IDs, entrant names,
                    standings, user IDs, and associated event IDs.
     """
+
+    # Initialize token and api endpoint for start.gg
     api_endpoint, token = startgg_vars()
 
+    # Query string to send
     query = """
     query EventSets($eventId: ID!, $cursor: Int!, $perPage: Int!) {
         event(id: $eventId) {
@@ -203,6 +221,7 @@ def getSetsByEvent(event_id):
         }
     }"""
 
+    # Initialize variables for sending query for event
     headers = {'Authorization': 'Bearer ' + token}
     cursor = 1
     has_next_page = True
@@ -213,7 +232,10 @@ def getSetsByEvent(event_id):
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
+    # Loop through all available pages for given event
     while has_next_page:
+
+        # Set items per query and variables
         perPage = 10
 
         variables = {
@@ -222,6 +244,7 @@ def getSetsByEvent(event_id):
             "perPage": perPage
         }
 
+        # Attempt to fetch response
         try:
             response = session.post(api_endpoint, json={'query': query, 'variables': variables}, headers=headers)
             response.raise_for_status()
@@ -233,6 +256,7 @@ def getSetsByEvent(event_id):
         response_dict = response.json()
         print(response_dict)
 
+        # Attempt to parse data from response
         try:
             sets_data = response_dict['data']['event']['sets']
             nodes = sets_data['nodes']
@@ -258,15 +282,20 @@ def getSetsByEvent(event_id):
 
                     except TypeError:
                         continue
+            # Assume there are no pages left if most recent result returns entries less than perPage value (default 10)
             if len(nodes) < perPage:
                 has_next_page = False
-            
+        
+        # Assume there are no pages left if result returns no matcing info in request
         except KeyError:
             has_next_page = False
 
         cursor += 1
+
+        # Mak next api call wait to adhere to rate limits
         sleep(0.5)
 
+    # Build dataframe from resulting data and return
     df = pd.DataFrame({
         'set_id': set_id,
         'entrant_id': entrant_id,
@@ -293,6 +322,7 @@ def getAllSets(event_list):
         DataFrame: A combined DataFrame containing all sets data from the listed events.
     """
 
+    # Initialize dataframe for all sets
     main = pd.DataFrame({
         'set_id': [],
         'entrant_id': [],
@@ -301,6 +331,9 @@ def getAllSets(event_list):
         'user_id': [],
         'event_id': []
     })
+
+    # Set incrementer value for returning dataframe
+    # Note: Function will periodically save new copy of dataframe for every 20 event_ids
     i = 0
 
     if os.path.isfile('all_sets.csv'):
@@ -320,8 +353,10 @@ def getAllSets(event_list):
                             'event_id': 'int32',
                             'user_id': 'int32'},
                             errors='ignore')
+        
+        # Save over all_sets.csv every 20 event_ids (in case of network issues)
         if i % 20 == 0:
-            main.to_csv('all_sets.csv')
+            main.to_csv('all_sets.csv', index=False)
         if newest_event_id in main['event_id'].unique():
             break
 
@@ -330,7 +365,8 @@ def getAllSets(event_list):
     # Set user_id to 0 if None
     main.loc[main['user_id'].isnull(),'user_id'] = -1
 
-    main.to_csv('all_sets.csv')
+    # Export to csv and return as dataframe to variable
+    main.to_csv('all_sets.csv', index=False)
 
     return main
 
@@ -415,10 +451,12 @@ def integrateLiquidpedia(df):
 
     return df
 
+# Script to automatically fetch new tournament data and derive set data and player data
+
 df = eventsByVideogame()
 print(df)
 df = pd.read_csv('events.csv')
-events = df['event_id']
+events = df[df['source'] == 'start_gg']['event_id']
 main = getAllSets(events)
 main.to_csv('all_sets.csv', index=False)
 main = main[pd.to_numeric(main['set_id'], errors='coerce').notnull()]
