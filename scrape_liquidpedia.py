@@ -275,23 +275,56 @@ def checkIDSeries(ids):
 
     return id
 
-def getUserId(name_string, matched_players):
+def getUserId(name_string, event_id, matched_players, players):
     """
     Gets user_id for players not matched in default dataframe
 
     Args:
     name_string (str): Entrant_name from liquidpedia brackets
     matched_players: df for matched players
+    row: original row name comes from
+    players: original matching df for startgg only
 
     Returns:
     user_id of matched player
     """
 
-    name = matched_players.loc[matched_players['entrant_name_input'] == name_string, 'user_id_matched'].min()
+    new_id = matched_players.loc[matched_players['entrant_name_input'] == name_string, 'user_id_matched'].min()
 
-    # ToDo: Add function to assign a new user_id to matched_player table if returns a nan value
-    print(name)
-    return name
+    if new_id == np.nan:
+        new_id, matched_players, players = assignIDToMatchingTable(name_string, event_id, matched_players, players)
+    
+    return new_id, matched_players, players
+
+
+def assignIDToMatchingTable(name_string, event_id, matched_players, players):
+    """
+    Creates user_id for players not matched in default dataframe or in existing matching table
+    for non-startgg players
+
+    Args:
+    name_string (str): Entrant_name from liquidpedia brackets
+    row: original row data came from from given dataframe (series)
+    matched_players: df for matched players
+    players: original matching df for startgg only
+
+    Returns:
+    user_id of matched player
+    """
+    # Create a new user_id
+    max_user_id = players.loc[:,'user_id'].max()
+    new_id = max_user_id + 1
+
+    # vars: matched_name, score, event_id, entrant_name_input, user_id_input, entrant_name_matched,user_id_matched
+    # Note: names for each side of the match will be identical
+    new_row_matching_table = ['', -1, event_id, name_string, np.nan, name_string, new_id]
+    matched_players = pd.concat(matched_players, new_row_matching_table, ignore_index=True)
+
+    # Vars: user_id,event_id,entrant_name,is_guest
+    new_row_players = [new_id, event_id, name_string, 'Yes']
+    players = pd.concat(players, new_row_players, ignore_index=True)
+
+    return new_id, matched_players, players
 
 
 def integrateSets(brackets_data='brackets.csv', data='all_sets.csv', players_path='players.csv', matched_players='all_matches.csv', test=False):
@@ -310,23 +343,24 @@ def integrateSets(brackets_data='brackets.csv', data='all_sets.csv', players_pat
     # Read set data with all sets
     sets = pd.read_csv(data)
     sets = sets[['set_id','entrant_id','entrant_name','standing','user_id','event_id','source']]
+    sets = sets.drop(['Unnamed: 0'], axis=1, errors='ignore')
 
     # Get Liquidpedia brackets
-    df = pd.read_csv(brackets_data)
+    df = pd.read_csv(brackets_data).drop(['Unnamed: 0'], axis=1, errors='ignore')
 
     # Get Player data (for looking up player's user_id vals)
-    players = pd.read_csv(players_path)
+    players = pd.read_csv(players_path).drop(['Unnamed: 0'], axis=1, errors='ignore')
 
-    id_matches = pd.read_csv(matched_players)
+    id_matches = pd.read_csv(matched_players).drop(['Unnamed: 0'], axis=1, errors='ignore')
 
     events = df.loc[:,'Event Id'].unique()
+
+    results = []
 
     # For each event id, iterate over the rows that correspond to each event's matches
     for event in events:
         setid = 1
         subset = df.loc[df['Event Id'] == event, :].reset_index()
-
-        results = []
 
         for ind, row in subset.iterrows():
 
@@ -334,36 +368,36 @@ def integrateSets(brackets_data='brackets.csv', data='all_sets.csv', players_pat
             scores = [row['Result 1'], row['Result 2']]
             try:
                 scores = [int(x) for x in scores]
-                if len(scores) != 2 or not all(isinstance(x, int) for x in scores):
-                    pass
-                else:
-                    # Allocate scores as standings (so winning the set gives you a 1, losing a 2)
-                    if scores[0] > scores[1]:
-                        standing = [1, 2]
-                    elif scores[1] > scores[0]:
-                        standing = [2, 1]
-
-                    player1 = row.loc['Player 1']
-                    player2 = row.loc['Player 2']
-
-                    uid1 = players.loc[players['entrant_name'] == player1, 'user_id']
-                    uid2 = players.loc[players['entrant_name'] == player2, 'user_id']
-
-                    uid1 = checkIDSeries(uid1)
-                    uid2 = checkIDSeries(uid2)
-
-                    if uid1 == np.nan:
-                        uid1 = getUserId(player1, id_matches)
-                    if uid2 == np.nan:
-                        uid2 = getUserId(player2, id_matches)
-
-                    # Build rows and add to results space
-                    row1 = [setid, 0, player1, standing[0], uid1, event, 'Liquidpedia']
-                    row2 = [setid, 0, player2, standing[1], uid2, event, 'Liquidpedia']
-
-                    results.extend([row1, row2])
             except:
+                scores = []
+            if len(scores) != 2 or not all(isinstance(x, int) for x in scores):
                 pass
+            else:
+                # Allocate scores as standings (so winning the set gives you a 1, losing a 2)
+                if scores[0] > scores[1]:
+                    standing = [1, 2]
+                elif scores[1] > scores[0]:
+                    standing = [2, 1]
+
+                player1 = row.loc['Player 1']
+                player2 = row.loc['Player 2']
+
+                uid1 = players.loc[players['entrant_name'] == player1, 'user_id']
+                uid2 = players.loc[players['entrant_name'] == player2, 'user_id']
+
+                uid1 = checkIDSeries(uid1)
+                uid2 = checkIDSeries(uid2)
+
+                if np.isnan(uid1):
+                    uid1, id_matches, players = getUserId(player1, event, id_matches, players)
+                if np.isnan(uid2):
+                    uid2, id_matches, players = getUserId(player2, event, id_matches, players)
+
+                # Build rows and add to results space
+                row1 = [setid, 0, player1, standing[0], uid1, event, 'Liquidpedia']
+                row2 = [setid, 0, player2, standing[1], uid2, event, 'Liquidpedia']
+
+                results.extend([row1, row2])
                 
             setid += 1
 
@@ -375,6 +409,8 @@ def integrateSets(brackets_data='brackets.csv', data='all_sets.csv', players_pat
 
     if test == False:
         sets.to_csv(data, index=False)
+        players.to_csv(players_path, index=False)
+        id_matches.to_csv(matched_players, index=False)
     else:
         print(sets)
         sets.to_csv('test.csv', index=False)
@@ -382,4 +418,4 @@ def integrateSets(brackets_data='brackets.csv', data='all_sets.csv', players_pat
 
 #scrapeAll("scrape_brackets.csv")
 addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='players.csv', test=False)
-integrateSets(test=True)
+integrateSets(test=False)
