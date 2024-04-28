@@ -4,6 +4,7 @@ import csv
 import pandas as pd
 import os
 import re
+import numpy as np
 
 def writeBracketsToCsv(csv_file, tournament_data, event_id):
     with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
@@ -225,15 +226,15 @@ def addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='players.c
                 new_id = generateUID(players)
 
                 # Assign new user_id to linking table
-                matching_table.loc[matching_table['entrant_name_input'] == p, 'user_id_matched'] = uid
+                matching_table.loc[matching_table['entrant_name_input'] == p, 'user_id_matched'] = new_id
+            else:
+                new_id = uid
 
-                # Insert row for players table
-                new_row = generatePlayerRow(player_lookup, new_id, is_guest='Yes')
-                if test == True:
-                    print(new_row)
-                players = pd.concat([players, new_row], axis=0).reset_index(drop=True)
-
-                # Otherwise, don't create a new row (will use linking table)
+            # Insert row for players table
+            new_row = generatePlayerRow(player_lookup, new_id, is_guest='Yes')
+            if test == True:
+                print(new_row)
+            players = pd.concat([players, new_row], axis=0).reset_index(drop=True)
         
         # If no sufficient match exists, do same as for if uid == 0
         else:
@@ -257,27 +258,128 @@ def addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='players.c
         matching_table.to_csv(df_path, index=False)
         players.to_csv(players_path, index=False)
 
-def integrateSets(df, data='all_sets.csv'):
+def checkIDSeries(ids):
+    """
+    Checks if a series has a value. If so, return first value. Else, return nan
+
+    Args:
+    ids (series): Series of user_id values from the all_sets table
+
+    Returns:
+    If a series is NOT empty, returns first value. Else, returns a numpy NaN value.
+    """
+    if len(ids) > 0:
+        id = ids.iloc[0]
+    else:
+        id = np.nan
+
+    return id
+
+def getUserId(name_string, matched_players):
+    """
+    Gets user_id for players not matched in default dataframe
+
+    Args:
+    name_string (str): Entrant_name from liquidpedia brackets
+    matched_players: df for matched players
+
+    Returns:
+    user_id of matched player
+    """
+
+    name = matched_players.loc[matched_players['entrant_name_input'] == name_string, 'user_id_matched'].min()
+
+    # ToDo: Add function to assign a new user_id to matched_player table if returns a nan value
+    print(name)
+    return name
+
+
+def integrateSets(brackets_data='brackets.csv', data='all_sets.csv', players_path='players.csv', matched_players='all_matches.csv', test=False):
     """
     Integrates bracket data to set data (by default, all_sets.csv)
 
     Args:
     df: Brackets data
     data: Filepath to set data
+    players_path: filepath to players data
+    test: Toggle to true if wanting to test function without changing data
 
     Returns: 
     """
 
     # Read set data with all sets
     sets = pd.read_csv(data)
+    sets = sets[['set_id','entrant_id','entrant_name','standing','user_id','event_id','source']]
 
-    # Process bracket data to match
-    df2 = pd.DataFrame({
-        'set_id': [],
-        'entrant_id': [],
-        'entrant_name': []
-    })
+    # Get Liquidpedia brackets
+    df = pd.read_csv(brackets_data)
+
+    # Get Player data (for looking up player's user_id vals)
+    players = pd.read_csv(players_path)
+
+    id_matches = pd.read_csv(matched_players)
+
+    events = df.loc[:,'Event Id'].unique()
+
+    # For each event id, iterate over the rows that correspond to each event's matches
+    for event in events:
+        setid = 1
+        subset = df.loc[df['Event Id'] == event, :].reset_index()
+
+        results = []
+
+        for ind, row in subset.iterrows():
+
+            # Pull the score for the set (only if there's no DQ and there are actual scores for both)
+            scores = [row['Result 1'], row['Result 2']]
+            try:
+                scores = [int(x) for x in scores]
+                if len(scores) != 2 or not all(isinstance(x, int) for x in scores):
+                    pass
+                else:
+                    # Allocate scores as standings (so winning the set gives you a 1, losing a 2)
+                    if scores[0] > scores[1]:
+                        standing = [1, 2]
+                    elif scores[1] > scores[0]:
+                        standing = [2, 1]
+
+                    player1 = row.loc['Player 1']
+                    player2 = row.loc['Player 2']
+
+                    uid1 = players.loc[players['entrant_name'] == player1, 'user_id']
+                    uid2 = players.loc[players['entrant_name'] == player2, 'user_id']
+
+                    uid1 = checkIDSeries(uid1)
+                    uid2 = checkIDSeries(uid2)
+
+                    if uid1 == np.nan:
+                        uid1 = getUserId(player1, id_matches)
+                    if uid2 == np.nan:
+                        uid2 = getUserId(player2, id_matches)
+
+                    # Build rows and add to results space
+                    row1 = [setid, 0, player1, standing[0], uid1, event, 'Liquidpedia']
+                    row2 = [setid, 0, player2, standing[1], uid2, event, 'Liquidpedia']
+
+                    results.extend([row1, row2])
+            except:
+                pass
+                
+            setid += 1
+
+    results = pd.DataFrame(results, columns = sets.columns) 
+
+    # Put set data into dataframe
+    sets = pd.concat([sets, results])
+    print(sets)
+
+    if test == False:
+        sets.to_csv(data, index=False)
+    else:
+        print(sets)
+        sets.to_csv('test.csv', index=False)
 
 
 #scrapeAll("scrape_brackets.csv")
-addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='new_players.csv', test=False)
+addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='players.csv', test=False)
+integrateSets(test=True)
