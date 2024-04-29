@@ -381,7 +381,7 @@ def getPlayersFromSets(sets_df):
         DataFrame: A DataFrame with columns for user IDs and entrant names, without duplicates.
     """
 
-    df = sets_df[['user_id', 'event_id', 'entrant_name','is_guest']].drop_duplicates()
+    df = sets_df[['user_id', 'event_id', 'entrant_name']].drop_duplicates()
 
     return df
 
@@ -439,7 +439,7 @@ def integrateLiquidpedia(df):
                              'comptier':'competition_tier'})
     
     df2['source'] = 'Liquidpedia'
-    df2['start_at'] = pd.to_datetime(df['start_at'])
+    df2['start_at'] = pd.to_datetime(df['start_at'], errors='ignore')
     df2['data_type'] = 'Brackets'
     df2['data_type'][df2['func_type'] != 3] = 'Brackets'
     df2['data_type'][df2['func_type'] == 3] = 'Pools'
