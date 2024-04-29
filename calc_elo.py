@@ -100,7 +100,6 @@ def getSetElo(row, player_lookup, elo_lookup):
     if user_id == 0:
         user_id = player_lookup[(player_lookup['entrant_name'] == user_name) & (player_lookup['event_id'] == event_id)]['user_id']
         if not user_id.empty:
-            print(user_id)
             user_id = user_id.iloc[0]
         else:
             return None
@@ -145,12 +144,31 @@ def reviseElo(user_id_1, user_id_2, elo1, elo2, event_id, elo_lookup):
                   'elo': elo1},
                   {'user_id': user_id_2,
                    'elo': elo2}]
+    
+    tiers = ['tier1', 'tier2', 'tier3', 'tier5']
 
     # First, check if elo exists in table
     for user in user_list:
         elo_check = elo_lookup.loc[(elo_lookup['user_id'] == user['user_id']) & (elo_lookup['event_id'] == event_id), 'elo']
         if elo_check.empty:
-            new_entry = pd.DataFrame({'user_id': [user['user_id']], 'event_id': [event_id], 'elo': [user['elo']]})
+            get_tiers = elo_lookup.loc[(elo_lookup['user_id'] == user['user_id']), tiers]
+            if not get_tiers.empty:
+                get_tiers = get_tiers.iloc[-1]
+                new_entry = pd.DataFrame({'user_id': [user['user_id']],
+                                        'event_id': [event_id],
+                                        'elo': [user['elo']],
+                                        'tier1': get_tiers['tier1'],
+                                        'tier2': get_tiers['tier2'],
+                                        'tier3': get_tiers['tier3'],
+                                        'tier5': get_tiers['tier5']})
+            else:
+                new_entry = pd.DataFrame({'user_id': [user['user_id']],
+                                        'event_id': [event_id],
+                                        'elo': [user['elo']],
+                                        'tier1': 0,
+                                        'tier2': 0,
+                                        'tier3': 0,
+                                        'tier5': 0})
             elo_lookup = pd.concat([elo_lookup, new_entry])
         else:
             elo_lookup.loc[(elo_lookup['user_id'] == user['user_id']) & (elo_lookup['event_id'] == event_id), 'elo'] = user['elo']
@@ -171,7 +189,6 @@ def calcEloForSet(df, elo_lookup, player_lookup):
     """
     if len(df) == 2:
         # Retrieve Elo from user id and lookup tables
-        print(df)
         p1 = getSetElo(df.reset_index().iloc[[0]].reset_index(), player_lookup, elo_lookup)
         p2 = getSetElo(df.reset_index().iloc[[1]].reset_index(), player_lookup, elo_lookup)
 
@@ -179,7 +196,6 @@ def calcEloForSet(df, elo_lookup, player_lookup):
     
             # Generate Elo Ratings
             elo1, elo2 = eloFormula(p1['elo'], p2['elo'], p1['standing'], p2['standing'])
-            print(elo1, elo2)
 
             # Insert Elos back into lookup table
             elo_lookup = reviseElo(p1['user_id'], p2['user_id'], elo1, elo2, p1['event_id'], elo_lookup)
@@ -193,10 +209,26 @@ def calcEloForSet(df, elo_lookup, player_lookup):
 # Assuming you have a pandas DataFrame `matches` with appropriate columns and `elo_lookup`, `player_lookup` DataFrames ready.
 # results_elo = calcEloForSet(matches, elo_lookup, player_lookup)
 
-def calcEloForEvent(df, event_id, elo_lookup, player_lookup):
+def calcEloForEvent(df, event_id, elo_lookup, player_lookup, event_comptiers):
     # Filter to event_id
     df_events = df.loc[df['event_id'] == event_id]
     sets = df_events.set_id.unique()
+    comp_tier = event_comptiers.loc[event_comptiers['event_id'] == event_id, 'competition_tier']
+    print(comp_tier)
+    
+    if comp_tier.empty:
+        comp_tier = 5
+    else:
+        comp_tier = comp_tier.iloc[0]
+    comp_tier = int(comp_tier)
+
+    tiers = {
+        1: 'tier1',
+        2: 'tier2',
+        3: 'tier3',
+        5: 'tier5',
+        53: 'tier5'
+    }
 
     for set in sets:
         df_set = df_events.loc[df_events['set_id'] == set]
@@ -204,6 +236,9 @@ def calcEloForEvent(df, event_id, elo_lookup, player_lookup):
 
         if isinstance(new_elo, pd.DataFrame):
             elo_lookup = new_elo
+
+    updated_tiers = elo_lookup.loc[elo_lookup['event_id'] == event_id, tiers[comp_tier]].add(1)
+    elo_lookup.loc[elo_lookup['event_id'] == event_id, tiers[comp_tier]] = updated_tiers
 
     return elo_lookup
 
@@ -231,18 +266,20 @@ def calcEloWrapper(set_path='all_sets.csv', player_path='players.csv', event_pat
     event_path (str, optional): Path to the CSV file containing event information. Defaults to 'events.csv'.
     """
     events = getEventList(event_path)
+    event_comptiers = pd.read_csv(event_path)
     player_lookup = pd.read_csv(player_path)
     df = pd.read_csv(set_path)
-    elo_lookup = pd.DataFrame({'user_id': [], 'event_id': [], 'elo': []})
+    elo_lookup = pd.DataFrame({'user_id': [], 'event_id': [], 'elo': [], 'tier1': [], 'tier2': [],
+                               'tier3': [], 'tier5': []})
 
     for event_id in events.event_id:
-        elo_lookup = calcEloForEvent(df, event_id, elo_lookup, player_lookup)
+        elo_lookup = calcEloForEvent(df, event_id, elo_lookup, player_lookup, event_comptiers)
 
-    elo_lookup.to_csv('elo_records.csv')
+    elo_lookup.to_csv('elo_records.csv', index=False)
     current_elo = elo_lookup.sort_values(by="event_id").drop_duplicates(subset=["user_id"], keep="last")
     p_uniques = player_lookup[['user_id', 'entrant_name']].drop_duplicates(subset=["user_id"], keep="last")
     current_elo = current_elo.merge(p_uniques, how='left', on='user_id')
-    current_elo.to_csv('current_elo.csv')
+    current_elo.to_csv('current_elo.csv', index=False)
 
 def calcEventParticipation(elo_records='elo_records.csv', event_path='events.csv'):
     """
@@ -252,11 +289,31 @@ def calcEventParticipation(elo_records='elo_records.csv', event_path='events.csv
     elo_records (str, optional): Path to the CSV file containing Elo records. Defaults to 'elo_records.csv'.
     event_path (str, optional): Path to the CSV file containing event information. Defaults to 'events.csv'.
     """
-    events = pd.read_csv(event_path)
+    events = pd.read_csv(event_path).sort_values('start_at', ascending=True)
     elo_df = pd.read_csv(elo_records)
 
-    df = events.groupby('competition_tier').count()
-    print(df)
+    tiers = ['tier1', 'tier2', 'tier3', 'tier5']
 
-#calcEloWrapper()
+    elo_df['tier1'] = 0
+    elo_df['tier2'] = 0
+    elo_df['tier3'] = 0
+    elo_df['tier5'] = 0
+
+    tier_mapping = {
+        1: 'tier1',
+        2: 'tier2',
+        3: 'tier3',
+        5: 'tier5'
+    }
+
+    # ToDO: need to calculate sum of each amount of tiers user participated in to date for each elo record
+
+    for ind, row in elo_df.iterrows():
+        event_id = row['event_id']
+        comp_tier = events.loc[events['competition_tier'] == event_id, 'competition_tier'][0]
+        user_tier_vals = elo_df.loc[elo_df['user_id'] == row['user_id'], tiers][0]
+        row
+        
+
+calcEloWrapper()
 calcEventParticipation()
