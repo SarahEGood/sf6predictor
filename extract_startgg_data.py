@@ -454,10 +454,23 @@ def integrateLiquidpedia(df):
 # SF6: 43868
 # SFV: 10055
 
-def fetchAllSetsWrapper(videogame_id, events_path='events.csv', sets_path='all_sets.csv', players_path='players.csv'):
-    df = eventsByVideogame(videogame_id, events_path, integrateLiquid=False)
-    events = df[df['source'] == 'start_gg']['event_id']
-    main = getAllSets(events)
+def fetchAllSetsWrapper(videogame_id, events_path='events.csv', sets_path='all_sets.csv', players_path='players.csv',
+                        integrateLiquid=False):
+    """
+    Function to pull all players, events, and set data available from start.gg for a given video game ID.
+
+    Args:
+    videogame_id: Id of given videogame from start.gg database
+    events_path: Destination path for events csv file (default: 'events.csv')
+    sets_path: Destination path for sets csv file (default: 'all_sets.csv')
+    players_path: Destination path for players csv file (default: 'players.csv')
+    integrateLiquid: If True, will integrate Liquidpedia brackets data into events data (default: False)
+        Note: This needs to be refactored to allow selection of different data. 
+    """
+
+    df = eventsByVideogame(videogame_id, events_path, integrateLiquid=integrateLiquid)
+    events = df[df['source'] == 'startgg']['event_id']
+    main = getAllSets(events, sets_path = sets_path)
     main.to_csv(sets_path, index=False)
     main = main[pd.to_numeric(main['set_id'], errors='coerce').notnull()]
     players = getPlayersFromSets(main)
