@@ -50,7 +50,7 @@ def startgg_vars():
     token = os.getenv('startgg_token')
     return api_endpoint, token
 
-def eventsByVideogame():
+def eventsByVideogame(videogame_id = 43868, events_path='events.csv', integrateLiquid=True):
     """
     Fetches and processes a list of events by videogame from the start.gg GraphQL API.
     Retrieves events associated with a specific videogame (Street Fighter 6),organizes
@@ -92,7 +92,6 @@ def eventsByVideogame():
 
     # Setup initial values and session variables
     cursor = 1
-    videogame_id = 43868  # Street Fighter 6 game id in start.gg database
     headers = {'Authorization': 'Bearer ' + token}
     adapter = HTTPAdapter(max_retries=retryStrategy())
     session = requests.Session()
@@ -114,8 +113,8 @@ def eventsByVideogame():
 
     # If the events file already exists, set newest_event_id to the earliest available event_id in current file
     # to prevent having to pull all events everytime.
-    if os.path.isfile('events.csv'):
-        old_df = pd.read_csv('events.csv')
+    if os.path.isfile(events_path):
+        old_df = pd.read_csv(events_path)
         newest_event_id = old_df[old_df['source'] == 'startgg']['event_id'].iloc[0]
         df = old_df
     else:
@@ -167,9 +166,10 @@ def eventsByVideogame():
 
     df['start_at'] = pd.to_datetime(df['start_at'], unit='s', utc=True, errors='ignore')
 
-    df = integrateLiquidpedia(df)
+    if integrateLiquid == True:
+        df = integrateLiquidpedia(df)
 
-    df.to_csv('events.csv', index=False)
+    df.to_csv(events_path, index=False)
     print(df.head())
     return df
 
@@ -311,7 +311,7 @@ def getSetsByEvent(event_id):
     print(df.head(5))
     return df
 
-def getAllSets(event_list):
+def getAllSets(event_list, sets_path = 'all_sets.csv'):
     """
     Fetches and combines sets data for multiple events into a single DataFrame.
 
@@ -336,8 +336,8 @@ def getAllSets(event_list):
     # Note: Function will periodically save new copy of dataframe for every 20 event_ids
     i = 0
 
-    if os.path.isfile('all_sets.csv'):
-        main = pd.read_csv('all_sets.csv')
+    if os.path.isfile(sets_path):
+        main = pd.read_csv(sets_path)
         newest_event_id = main[main['source'] == 'startgg']['event_id'].iloc[-1]
     else:
         newest_event_id = -1
@@ -356,7 +356,7 @@ def getAllSets(event_list):
         
         # Save over all_sets.csv every 20 event_ids (in case of network issues)
         if i % 20 == 0:
-            main.to_csv('all_sets.csv', index=False)
+            main.to_csv(sets_path, index=False)
         if newest_event_id in main['event_id'].unique():
             break
 
@@ -366,7 +366,7 @@ def getAllSets(event_list):
     main.loc[main['user_id'].isnull(),'user_id'] = -1
 
     # Export to csv and return as dataframe to variable
-    main.to_csv('all_sets.csv', index=False)
+    main.to_csv(sets_path, index=False)
 
     return main
 
@@ -385,7 +385,7 @@ def getPlayersFromSets(sets_df):
 
     return df
 
-def getEventSort():
+def getEventSort(events_path = 'events.csv'):
     """
     Loads an events DataFrame from a CSV file, sorts it by start time, and returns the sorted DataFrame.
 
@@ -394,7 +394,7 @@ def getEventSort():
     """
 
     # Load tournament and set data
-    event_list = pd.read_csv('events.csv')
+    event_list = pd.read_csv(events_path)
 
     # Get list of events sorted (ascending) by date
     event_sort_cols = ['event_id', 'start_at']
@@ -402,7 +402,7 @@ def getEventSort():
     
     return event_list
 
-def sortBySetId():
+def sortBySetId(sets_path='all_sets.csv'):
     """
     Loads a sets DataFrame from a CSV file, sorts it by set ID, and returns the sorted DataFrame.
 
@@ -411,7 +411,7 @@ def sortBySetId():
     """
 
     # Load set data
-    sets = pd.read_csv('all_sets.csv')
+    sets = pd.read_csv(sets_path)
 
     # Sort by set_id
     sets = sets.sort_values('set_id')
@@ -451,14 +451,16 @@ def integrateLiquidpedia(df):
 
     return df
 
-# Script to automatically fetch new tournament data and derive set data and player data
+# SF6: 43868
+# SFV: 10055
 
-df = eventsByVideogame()
-print(df)
-df = pd.read_csv('events.csv')
-events = df[df['source'] == 'start_gg']['event_id']
-main = getAllSets(events)
-main.to_csv('all_sets.csv', index=False)
-main = main[pd.to_numeric(main['set_id'], errors='coerce').notnull()]
-players = getPlayersFromSets(main)
-players.to_csv('new_players.csv', index=False)
+def fetchAllSetsWrapper(videogame_id, events_path='events.csv', sets_path='all_sets.csv', players_path='players.csv'):
+    df = eventsByVideogame(videogame_id, events_path, integrateLiquid=False)
+    events = df[df['source'] == 'start_gg']['event_id']
+    main = getAllSets(events)
+    main.to_csv(sets_path, index=False)
+    main = main[pd.to_numeric(main['set_id'], errors='coerce').notnull()]
+    players = getPlayersFromSets(main)
+    players.to_csv(players_path, index=False)
+
+fetchAllSetsWrapper(10055, 'SFV\\events.csv', 'SFV\\all_sets.csv', 'SFV\\players.csv')
