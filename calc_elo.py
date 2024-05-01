@@ -77,7 +77,7 @@ def eloPoolsFormula(ratings, wins, losses, k=30):
     return new_ratings
 
 # Function to get user_id from dataframes
-def getSetElo(row, player_lookup, elo_lookup):
+def getSetElo(row, player_lookup, elo_lookup, name_match='all_matches.csv'):
     """
     Retrieve or initialize Elo rating for a player based on event and player lookup tables.
 
@@ -95,11 +95,15 @@ def getSetElo(row, player_lookup, elo_lookup):
     event_id = row['event_id'][0]
 
     new_elo_flag = 0
+    matches = pd.read_csv(name_match)
 
     # Search for user id if player has no id
-    if user_id == 0:
+    if user_id in [0, -1]:
         user_id = player_lookup[(player_lookup['entrant_name'] == user_name) & (player_lookup['event_id'] == event_id)]['user_id']
-        if not user_id.empty:
+        user_id2 = matches.loc[(matches['entrant_name_input'] == user_name), 'user_id_matched']
+        if not user_id2.empty:
+            user_id = user_id2.max()
+        elif not user_id.empty:
             user_id = user_id.iloc[0]
         else:
             return None
@@ -255,7 +259,8 @@ def getEventList(path):
     events = pd.read_csv(path)[['start_at', 'event_id']].sort_values('start_at')
     return events
 
-def calcEloWrapper(set_path='all_sets.csv', player_path='players.csv', event_path='events.csv'):
+def calcEloWrapper(set_path='all_sets.csv', player_path='players.csv', event_path='events.csv',
+                   elo_path='elo_records.csv', current_elo_path='current_elo.csv'):
     """
     Processes Elo rating updates for all events specified in a given imported dataframe. It reads the event, player, and set data,
     updates Elo ratings for each event, and saves the final Elo ratings to CSV files.
@@ -274,12 +279,13 @@ def calcEloWrapper(set_path='all_sets.csv', player_path='players.csv', event_pat
 
     for event_id in events.event_id:
         elo_lookup = calcEloForEvent(df, event_id, elo_lookup, player_lookup, event_comptiers)
+        print(elo_lookup)
 
-    elo_lookup.to_csv('elo_records.csv', index=False)
+    elo_lookup.to_csv(elo_path, index=False)
     current_elo = elo_lookup.sort_values(by="event_id").drop_duplicates(subset=["user_id"], keep="last")
     p_uniques = player_lookup[['user_id', 'entrant_name']].drop_duplicates(subset=["user_id"], keep="last")
     current_elo = current_elo.merge(p_uniques, how='left', on='user_id')
-    current_elo.to_csv('current_elo.csv', index=False)
+    current_elo.to_csv(current_elo_path, index=False)
 
 def calcEventParticipation(elo_records='elo_records.csv', event_path='events.csv'):
     """
@@ -307,13 +313,7 @@ def calcEventParticipation(elo_records='elo_records.csv', event_path='events.csv
     }
 
     # ToDO: need to calculate sum of each amount of tiers user participated in to date for each elo record
-
-    for ind, row in elo_df.iterrows():
-        event_id = row['event_id']
-        comp_tier = events.loc[events['competition_tier'] == event_id, 'competition_tier'][0]
-        user_tier_vals = elo_df.loc[elo_df['user_id'] == row['user_id'], tiers][0]
-        row
         
 
-calcEloWrapper()
-calcEventParticipation()
+calcEloWrapper(set_path='SFV\\all_sets.csv', player_path='SFV\\players.csv', event_path='SFV\\events.csv',
+                elo_path='SFV\\elo_records.csv', current_elo_path='SFV\\current_elo.csv')
