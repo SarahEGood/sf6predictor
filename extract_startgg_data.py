@@ -173,6 +173,61 @@ def eventsByVideogame(videogame_id = 43868, events_path='events.csv', integrateL
     print(df.head())
     return df
 
+def getPhaseIds(event_id):
+    """
+    Fetches all phase id's from a given event for further processing
+
+    Args:
+    event_id (int): event_id via start.gg to query
+
+    Returns:
+    phase_ids (list): list of phase ids of an event
+    """
+
+    api_endpoint, token = startgg_vars()
+
+    query = """
+    query EventSets($eventId: ID!) {
+            event(id: $eventId) {
+                id
+                name
+                phases
+                            {
+                        id
+                bracketType
+                }
+            }
+        }
+    """
+
+    # Setup initial values and session variables
+    headers = {'Authorization': 'Bearer ' + token}
+    variables = {'eventId': int(event_id)}
+    adapter = HTTPAdapter(max_retries=retryStrategy())
+    session = requests.Session()
+
+    # Allow useage of http and https
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    phase_ids = []
+
+    try:
+        response = session.post(api_endpoint, json={'query': query, 'variables': variables}, headers=headers)
+        response.raise_for_status()
+        print("Request was successful!")
+        data = response.json()
+        print(data)
+        phases = data['data']['event']['phases']
+        if phases:
+            for phase in phases:
+                phase_ids.append(phase['id'])
+    except:
+        pass
+
+    print(phase_ids)
+    return phase_ids
+
 def getSetsByEvent(event_id):
     """
     Fetches sets data for a specific event from the start.gg API and organizes it into a DataFrame.
@@ -190,8 +245,8 @@ def getSetsByEvent(event_id):
 
     # Query string to send
     query = """
-    query EventSets($eventId: ID!, $cursor: Int!, $perPage: Int!) {
-        event(id: $eventId) {
+    query PhaseSets($phaseId: ID!, $cursor: Int!, $perPage: Int!) {
+        phase(id: $phaseId) {
             id
             name
             sets(
@@ -210,6 +265,11 @@ def getSetsByEvent(event_id):
                                 user {
                                     id
                                 }
+                                player {
+                                    id
+                                    gamerTag
+                                    prefix
+                                }
                             }
                         }
                         standing {
@@ -223,77 +283,102 @@ def getSetsByEvent(event_id):
 
     # Initialize variables for sending query for event
     headers = {'Authorization': 'Bearer ' + token}
-    cursor = 1
-    has_next_page = True
     set_id, entrant_id, entrant_name, standing, user_id = [], [], [], [], []
+    pids, gamertags, prefixes = [], [], []
 
     adapter = HTTPAdapter(max_retries=retryStrategy())
     session = requests.Session()
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
-    # Loop through all available pages for given event
-    while has_next_page:
+    phase_ids = getPhaseIds(event_id)
 
-        # Set items per query and variables
-        perPage = 10
+    if phase_ids:
+        for phase_id in phase_ids:
+            cursor = 1
+            has_next_page = True
 
-        variables = {
-            "eventId": int(event_id),
-            "cursor": cursor,
-            "perPage": perPage
-        }
+            # Loop through all available pages for given event
+            while has_next_page:
 
-        # Attempt to fetch response
-        try:
-            response = session.post(api_endpoint, json={'query': query, 'variables': variables}, headers=headers)
-            response.raise_for_status()
-        except:
-            break
-        else:
-            print("Request was successful!")
+                # Set items per query and variables
+                perPage = 10
 
-        response_dict = response.json()
-        print(response_dict)
+                variables = {
+                    "phaseId": int(phase_id),
+                    "cursor": cursor,
+                    "perPage": perPage
+                }
 
-        # Attempt to parse data from response
-        try:
-            sets_data = response_dict['data']['event']['sets']
-            nodes = sets_data['nodes']
-            for set in nodes:
-                for slot in set['slots']:
-                    print(slot)
-                    try:
-                        info_list = [set['id']]
-                        entrant = slot['entrant']
-                        try:
-                            uid = entrant['participants'][0]['user']['id']
-                            if not uid:
-                                uid = 0
-                        except:
-                            uid = 0
-                        info_list.extend([entrant['id'], entrant['name'], slot['standing']['placement'], uid])
+                # Attempt to fetch response
+                try:
+                    response = session.post(api_endpoint, json={'query': query, 'variables': variables}, headers=headers)
+                    response.raise_for_status()
+                except:
+                    break
+                else:
+                    print("Request was successful!")
 
-                        set_id.append(info_list[0])
-                        entrant_id.append(info_list[1])
-                        entrant_name.append(info_list[2])
-                        standing.append(info_list[3])
-                        user_id.append(info_list[4] if info_list[4] else None)
+                response_dict = response.json()
+                print(response_dict)
 
-                    except TypeError:
-                        continue
-            # Assume there are no pages left if most recent result returns entries less than perPage value (default 10)
-            if len(nodes) < perPage:
-                has_next_page = False
-        
-        # Assume there are no pages left if result returns no matcing info in request
-        except KeyError:
-            has_next_page = False
+                # Attempt to parse data from response
+                try:
+                    sets_data = response_dict['data']['phase']['sets']
+                    if sets_data:
+                        nodes = sets_data['nodes']
+                        for set in nodes:
+                            for slot in set['slots']:
+                                print(slot)
+                                try:
+                                    info_list = [set['id']]
+                                    entrant = slot['entrant']
+                                    try:
+                                        uid = entrant['participants'][0]['user']['id']
+                                        if not uid:
+                                            uid = 0
+                                    except:
+                                        uid = 0
+                                    try:
+                                        pid = entrant['participants'][0]['player']['id']
+                                        gamerTag = entrant['participants'][0]['player']['gamerTag']
+                                        p_prefix = entrant['participants'][0]['player']['prefix']
+                                        if not pid:
+                                            pid = 0
+                                            gamerTag = ''
+                                            p_prefix = ''
+                                    except:
+                                        pid = 0
+                                        gamerTag = ''
+                                        p_prefix = ''
+                                    
+                                    info_list.extend([entrant['id'], entrant['name'], slot['standing']['placement'], uid, pid, gamerTag, p_prefix])
 
-        cursor += 1
+                                    set_id.append(info_list[0])
+                                    entrant_id.append(info_list[1])
+                                    entrant_name.append(info_list[2])
+                                    standing.append(info_list[3])
+                                    user_id.append(info_list[4] if info_list[4] else None)
+                                    pids.append(info_list[5])
+                                    gamertags.append(info_list[6])
+                                    prefixes.append(info_list[7])
 
-        # Mak next api call wait to adhere to rate limits
-        sleep(0.5)
+                                except TypeError:
+                                    continue
+                        # Assume there are no pages left if most recent result returns entries less than perPage value (default 10)
+                        if len(nodes) < perPage:
+                            has_next_page = False
+                    else:
+                        has_next_page = False
+                
+                # Assume there are no pages left if result returns no matcing info in request
+                except KeyError:
+                    has_next_page = False
+
+                cursor += 1
+
+                # Mak next api call wait to adhere to rate limits
+                sleep(0.5)
 
     # Build dataframe from resulting data and return
     df = pd.DataFrame({
@@ -302,6 +387,9 @@ def getSetsByEvent(event_id):
         'entrant_name': entrant_name,
         'standing': standing,
         'user_id': user_id,
+        'player_id': pids,
+        'gamerTag': gamertags,
+        'player_prefix': prefixes,
         'event_id': [event_id] * len(set_id),
         'source': ['startgg'] * len(set_id)
     })
@@ -381,7 +469,8 @@ def getPlayersFromSets(sets_df):
         DataFrame: A DataFrame with columns for user IDs and entrant names, without duplicates.
     """
 
-    df = sets_df[['user_id', 'event_id', 'entrant_name']].drop_duplicates()
+    df = sets_df[['user_id', 'player_id', 'entrant_name', 'player_prefix', 'gamerTag', 'event_id']]
+    df = df.drop_duplicates(subset=['user_id', 'player_id'])
 
     return df
 
@@ -476,4 +565,4 @@ def fetchAllSetsWrapper(videogame_id, events_path='events.csv', sets_path='all_s
     players = getPlayersFromSets(main)
     players.to_csv(players_path, index=False)
 
-fetchAllSetsWrapper(10055, 'SFV\\events.csv', 'SFV\\all_sets.csv', 'SFV\\players.csv')
+fetchAllSetsWrapper(43868, 'SF6\\events.csv', 'SF6\\all_sets.csv', 'SF6\\players.csv')
