@@ -314,6 +314,6 @@ def calcEventParticipation(elo_records='elo_records.csv', event_path='events.csv
 
     # ToDO: need to calculate sum of each amount of tiers user participated in to date for each elo record
         
-
-calcEloWrapper(set_path='SFV\\all_sets.csv', player_path='SFV\\players.csv', event_path='SFV\\events.csv',
-                elo_path='SFV\\elo_records.csv', current_elo_path='SFV\\current_elo.csv')
+if __name__ == '__main__':
+    calcEloWrapper(set_path='SFV\\all_sets.csv', player_path='SFV\\players.csv', event_path='SFV\\events.csv',
+                    elo_path='SFV\\elo_records.csv', current_elo_path='SFV\\current_elo.csv')

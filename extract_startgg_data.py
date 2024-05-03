@@ -2,7 +2,7 @@ import requests
 import os
 import pandas as pd
 import numpy as np
-from time import sleep
+from time import sleep, time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -557,6 +557,8 @@ def fetchAllSetsWrapper(videogame_id, events_path='events.csv', sets_path='all_s
         Note: This needs to be refactored to allow selection of different data. 
     """
 
+    start_time = time()
+
     df = eventsByVideogame(videogame_id, events_path, integrateLiquid=integrateLiquid)
     events = df[df['source'] == 'startgg']['event_id']
     main = getAllSets(events, sets_path = sets_path)
@@ -565,4 +567,9 @@ def fetchAllSetsWrapper(videogame_id, events_path='events.csv', sets_path='all_s
     players = getPlayersFromSets(main)
     players.to_csv(players_path, index=False)
 
-fetchAllSetsWrapper(43868, 'SF6\\events.csv', 'SF6\\all_sets.csv', 'SF6\\players.csv')
+    hours = round((time() - start_time)/60, 2)
+    print("All set total runtime: {} hours".format(hours))
+
+if __name__ == '__main__':
+    fetchAllSetsWrapper(43868, 'SF6\\events.csv', 'SF6\\all_sets.csv', 'SF6\\players.csv')
+    fetchAllSetsWrapper(10055, 'SFV\\events.csv', 'SFV\\all_sets.csv', 'SFV\\players.csv')
