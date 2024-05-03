@@ -10,6 +10,19 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 def safe_get(d, keys, default=None):
+    """
+    Safely navigate through nested dictionaries.
+
+    Parameters:
+        d (dict): The dictionary to search.
+        keys (list): A list of keys to navigate through the dictionary.
+        default (any): The default value to return if the keys are not found.
+
+    Returns:
+        The value from the dictionary located at the path specified by keys or
+        the default value if the path is not found.
+    """
+
     assert isinstance(keys, list), "keys must be provided as a list"
     current = d
     for key in keys:
@@ -20,8 +33,18 @@ def safe_get(d, keys, default=None):
     return current
 
 def fetchPlayerbyId(player_id):
+    """
+    Fetches player data from the start.gg API using GraphQL.
+
+    Parameters:
+        player_id (int): The unique identifier for the player.
+
+    Returns:
+        dict: The player data if successful, None otherwise.
+    """
     api_endpoint, token = startgg_vars()
 
+    # GraphQL query to fetch user data based on player ID
     query = """
         query UserData($playerId: ID!) {
         player(id: $playerId) {
@@ -66,6 +89,18 @@ def fetchPlayerbyId(player_id):
         return None
 
 def processPlayerData(player_id, data):
+    """
+    Processes and extracts relevant fields from raw player data.
+
+    Parameters:
+        player_id (int): The player's unique ID.
+        data (dict): The raw data dictionary returned from the API.
+
+    Returns:
+        dict: A dictionary containing the processed and formatted player data.
+    """
+
+    # Extract basic information and social media identifiers
     gamerTag = safe_get(data, ['gamerTag'])
     prefix = safe_get(data, ['prefix'])
     user_id = safe_get(data, ['user', 'id'])
@@ -73,6 +108,7 @@ def processPlayerData(player_id, data):
     country = safe_get(data, ['user', 'location', 'country'])
     state = safe_get(data, ['user', 'location', 'state'])
 
+    # Initialize social media information
     twitter_handle = None
     discord_id = None
     discord_username = None
@@ -88,6 +124,7 @@ def processPlayerData(player_id, data):
             externalUsername = safe_get(auth, ['externalUsername'])
             service = safe_get(auth, ['type'])
 
+            # Map social media data to respective fields based on service type
             if service.lower() == 'discord':
                 discord_id = ext_id
                 discord_username = externalUsername
@@ -101,6 +138,7 @@ def processPlayerData(player_id, data):
             elif service.lower() == 'mixer':
                 mixer_username = externalUsername
 
+    # Compile all extracted data into a dictionary for further use in dataframe
     data_dict = {
             'player_name': gamerTag,
             'full_name': full_name,
@@ -122,8 +160,18 @@ def processPlayerData(player_id, data):
     return data_dict
 
 def integrateStartGGPlayers(og_data_path='players.csv'):
+    """
+    Integrates player data from a CSV file using data fetched from the start.gg API.
+
+    Parameters:
+        og_data_path (str): The original path to the CSV file containing player IDs.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the integrated player data.
+    """
     start_time = time()
 
+    # Check for an existing data file and create or update accordingly
     if os.path.isfile('data\\players.csv'):
         df = pd.read_csv('data\\players.csv')
         uid_ind = df.loc[:, 'uid'].max() + 1
@@ -151,36 +199,30 @@ def integrateStartGGPlayers(og_data_path='players.csv'):
 
     startgg = pd.read_csv(og_data_path)
 
+    # Process each player in the CSV file
     for pid in startgg['player_id'].unique():
+        # Only add if a new player id is encountered
         if df.loc[df['startgg_pid'] == pid,:].empty:
-
             data = fetchPlayerbyId(pid)
 
             if data:
                 new_data = processPlayerData(pid, data)
                 datetime_now = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
-
-                new_data.update({
-                    'uid': uid_ind,
-                    'date_added': datetime_now
-                    })
-
+                new_data.update({'uid': uid_ind, 'date_added': datetime_now})
                 uid_ind += 1
                 new_row = pd.DataFrame(new_data)
-
                 df = pd.concat([df, new_row], axis=0, ignore_index=True)
-
+                # Save periodically after processing every 20 players
                 if uid_ind % 20:
                     df.to_csv('data\\players.csv', index=False)
-
-                sleep(0.5)
+                sleep(0.5) # Sleep to prevent rate limiting
 
     df.to_csv('data\\players.csv', index=False)
 
     hours = round((time() - start_time)/60, 2)
-    print("All set total runtime: {} hours".format(hours))
+    print("Player data total runtime: {} hours".format(hours))
 
     return df
 
 if __name__ == '__main__':
-    df = integrateStartGGPlayers('SF6\\players.csv')
+    df = integrateStartGGPlayers('SF6\\all_sets.csv')
