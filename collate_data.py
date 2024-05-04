@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
-from time import sleep
-import time
+from time import sleep, time
 from datetime import datetime
 from extract_startgg_data import startgg_vars, retryStrategy
 import requests
@@ -117,7 +116,7 @@ def processPlayerData(player_id, data):
     twitch_id = None
     twitch_name = None
     
-    socials_raw = safe_get(['user', 'authorizations'])
+    socials_raw = safe_get(data, ['user', 'authorizations'])
     if socials_raw:
         for auth in socials_raw:
             ext_id = safe_get(auth, ['externalId'])
@@ -144,7 +143,7 @@ def processPlayerData(player_id, data):
             'full_name': full_name,
             'prefix': prefix,
             'startgg_pid': int(player_id),
-            'startgg_uid': int(user_id),
+            'startgg_uid': user_id,
             'country': country,
             'state': state,
             'twitter_id': twitter_handle,
@@ -208,12 +207,13 @@ def integrateStartGGPlayers(og_data_path='players.csv'):
             if data:
                 new_data = processPlayerData(pid, data)
                 datetime_now = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
-                new_data.update({'uid': uid_ind, 'date_added': datetime_now})
+                new_data.update({'uid': int(uid_ind), 'date_added': datetime_now})
                 uid_ind += 1
-                new_row = pd.DataFrame(new_data)
+                print(new_data)
+                new_row = pd.DataFrame([new_data])
                 df = pd.concat([df, new_row], axis=0, ignore_index=True)
                 # Save periodically after processing every 20 players
-                if uid_ind % 20:
+                if uid_ind % 20 == 0:
                     df.to_csv('data\\players.csv', index=False)
                 sleep(0.5) # Sleep to prevent rate limiting
 
@@ -225,4 +225,5 @@ def integrateStartGGPlayers(og_data_path='players.csv'):
     return df
 
 if __name__ == '__main__':
-    df = integrateStartGGPlayers('SF6\\all_sets.csv')
+    df = integrateStartGGPlayers(og_data_path='SF6\\all_sets.csv')
+    df = integrateStartGGPlayers('SFV\\all_sets.csv')
