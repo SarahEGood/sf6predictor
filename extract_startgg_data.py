@@ -6,6 +6,67 @@ from time import sleep, time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+def safe_get(d, keys, default=None):
+    """
+    Safely navigate through nested dictionaries.
+
+    Parameters:
+        d (dict): The dictionary to search.
+        keys (list): A list of keys to navigate through the dictionary.
+        default (any): The default value to return if the keys are not found.
+
+    Returns:
+        The value from the dictionary located at the path specified by keys or
+        the default value if the path is not found.
+    """
+
+    assert isinstance(keys, list), "keys must be provided as a list"
+    current = d
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return default
+    return current
+
+def safe_reassign(df, id, id_name, key, new_val):
+    """
+    Safely add new values from API requests if value exists.
+
+    Parameters:
+        df (dataframe): Dataframe to assign new value to.
+        id (int): Id of relevant record.
+        id_name (string): Name of id column.
+        key (string): Name of column to add.
+        new_val: Name of value to reassign.
+
+    Returns:
+        Dataframe if new value assigned if it exists. Else, return original
+        Dataframe
+    """
+    if new_val:
+        df.loc[df[id_name] == id, key] = new_val
+
+    return df
+
+def ensure_columns(df, new_data, fill_val = pd.NA):
+    """
+    Ensure that the DataFrame has all necessary columns from new data,
+    filling missing columns with default values (e.g., NaN).
+    
+    Parameters:
+        df (pd.DataFrame): The existing DataFrame.
+        new_data (dict): Dictionary with new data that might contain new columns.
+
+    Returns:
+        pd.DataFrame: Updated DataFrame with all necessary columns.
+    """
+    # Extract columns from the new data that are not in the DataFrame
+    new_cols = set(new_data.keys()) - set(df.columns)
+    for col in new_cols:
+        df[col] = fill_val  # Use pandas' NA for missing data by default which supports all data types
+    return df 
+
 def check_guest(value):
     """
     Checks if a value is 0 or null (for checking if a user id was pulled for a specific user)
@@ -77,6 +138,9 @@ def eventsByVideogame(videogame_id = 43868, events_path='events.csv', integrateL
                 name
                 slug
                 startAt
+                city
+                countryCode
+                postalCode
                 events {
                     id
                     name
@@ -105,6 +169,8 @@ def eventsByVideogame(videogame_id = 43868, events_path='events.csv', integrateL
         'event_id': [],
         'event_name': [],
         'event_slug': [],
+        'city': [],
+        'country': [],
         'tournament_name': [],
         'tournament_id': [],
         'start_at': [],
@@ -143,6 +209,9 @@ def eventsByVideogame(videogame_id = 43868, events_path='events.csv', integrateL
                 'event_id': event['id'],
                 'event_name': event['name'],
                 'event_slug': event['slug'],
+                'city': tournament['city'],
+                'country': tournament['countryCode'],
+                'postalCode': tournament['postalCode'],
                 'tournament_name': tournament['name'],
                 'tournament_id': tournament['id'],
                 'start_at': tournament['startAt'],
@@ -171,6 +240,103 @@ def eventsByVideogame(videogame_id = 43868, events_path='events.csv', integrateL
 
     df.to_csv(events_path, index=False)
     print(df.head())
+    return df
+
+def updateEvent(df, videogame_id = 43868):
+    """
+    Fetches and processes a list of events by videogame from the start.gg GraphQL API.
+    If changes have occured to an event, add to table.
+
+    Returns:
+        DataFrame: A DataFrame containing data about events, including event IDs, names, slugs,
+        tournament names, IDs, start times, and competition tiers.
+    """
+    api_endpoint, token = startgg_vars()
+
+    query = """
+    query EventsByVideogame($perPage: Int!, $videogameId: ID!, $cursor: Int) {
+        tournaments(query: {
+            perPage: $perPage
+            page: $cursor
+            filter: {
+                past: true
+                videogameIds: [$videogameId]
+            }
+        }) {
+            nodes {
+                id
+                name
+                slug
+                startAt
+                city
+                countryCode
+                postalCode
+                events {
+                    id
+                    name
+                    slug
+                    competitionTier
+                    videogame {
+                        id
+                    }
+                }
+            }
+        }
+    }"""
+
+    # Setup initial values and session variables
+    cursor = 1
+    headers = {'Authorization': 'Bearer ' + token}
+    adapter = HTTPAdapter(max_retries=retryStrategy())
+    session = requests.Session()
+
+    # Allow useage of http and https
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    df['event_id'] = df['event_id'].astype(int)
+
+    # Make continual queries until pagination runs out
+    while True:
+        variables = {
+            "perPage": 10,
+            'cursor': cursor,
+            "videogameId": videogame_id
+        }
+
+        response = session.post(api_endpoint, json={'query': query, 'variables': variables}, headers=headers)
+        response.raise_for_status()
+        print("Request was successful!")
+        data = response.json()
+        nodes = safe_get(data, ['data', 'tournaments', 'nodes'])
+        print("TEST NODES")
+        print(nodes)
+
+        if nodes:
+            for node in nodes:
+                event_id = safe_get(node, ['events', 'id'])
+                city = safe_get(node, ['city'])
+                countryCode = safe_get(node, ['countryCode'])
+                postalCode = safe_get(node, ['postalCode'])
+                events = safe_get(node, ['events'])
+                if events:
+                    for event in events:
+                        vid = safe_get(event, ['videogame', 'id'])
+                        if vid == videogame_id:
+                            event_id = safe_get(event, ['id'])
+                            df = safe_reassign(df, event_id, 'event_id', 'city', city)
+                            df = safe_reassign(df, event_id, 'event_id', 'country', countryCode)
+                            df = safe_reassign(df, event_id, 'event_id', 'postalCode', postalCode)
+
+            cursor += 1
+        else:
+            break
+
+        if len(nodes) < 10:
+            break
+
+        sleep(0.7)
+
     return df
 
 def getPhaseIds(event_id):
@@ -518,27 +684,33 @@ def integrateLiquidpedia(df):
         DataFrame: Contains all event data. 
     """
 
+    if 'data_type' not in df.columns:
+        df['data_type'] = 'Brackets'
+
     df['data_type'][df['source'] == 'startgg'] = 'Brackets'
+    df['state'] = pd.NaT
     df = df.reset_index(drop=True)
 
-    df2 = pd.read_csv('scrape_brackets.csv')[['event_id','event_name','comptier','date','func_type']]
+    df2 = pd.read_csv('scrape_brackets.csv')[['event_id','event_name','comptier','date','func_type', 'country', 'city', 'state']]
 
     df2 = df2.rename(columns={'date': 'start_at',
                              'event_name': 'event_slug',
                              'comptier':'competition_tier'})
     
     df2['source'] = 'Liquidpedia'
-    df2['start_at'] = pd.to_datetime(df['start_at'], errors='ignore')
+    df['start_at'] = pd.to_datetime(df['start_at'], errors='coerce')
+    df2['start_at'] = pd.to_datetime(df2['start_at'], errors='coerce')
     df2['data_type'] = 'Brackets'
-    df2['data_type'][df2['func_type'] != 3] = 'Brackets'
-    df2['data_type'][df2['func_type'] == 3] = 'Pools'
+    df2.loc[df2['func_type'] != 3, 'data_type'] = 'Brackets'
+    df2.loc[df2['func_type'] == 3, 'data_type'] = 'Pools'
 
     df2.drop(columns=['func_type'])
 
-    df = pd.concat([df, df2], axis=0).reset_index(drop=True)
-    df.drop_duplicates()
+    df2 = pd.concat([df, df2], axis=0, ignore_index=True).sort_values(['start_at', 'competition_tier', 'country'], ascending=[False, True, True],
+                                                                      na_position='last')
+    df2.drop_duplicates(['event_id'], keep='first')
 
-    return df
+    return df2
 
 # SF6: 43868
 # SFV: 10055
@@ -567,9 +739,13 @@ def fetchAllSetsWrapper(videogame_id, events_path='events.csv', sets_path='all_s
     players = getPlayersFromSets(main)
     players.to_csv(players_path, index=False)
 
+    export_me = updateEvent(df, videogame_id = videogame_id)
+    export_me = integrateLiquidpedia(df)
+    export_me.to_csv('data\\events.csv', index=False)
+
     hours = round((time() - start_time)/60, 2)
     print("All set total runtime: {} hours".format(hours))
 
 if __name__ == '__main__':
     fetchAllSetsWrapper(43868, 'SF6\\events.csv', 'SF6\\all_sets.csv', 'SF6\\players.csv')
-    fetchAllSetsWrapper(10055, 'SFV\\events.csv', 'SFV\\all_sets.csv', 'SFV\\players.csv')
+    #fetchAllSetsWrapper(10055, 'SFV\\events.csv', 'SFV\\all_sets.csv', 'SFV\\players.csv')
