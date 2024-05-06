@@ -158,7 +158,7 @@ def processPlayerData(player_id, data):
 
     return data_dict
 
-def integrateStartGGPlayers(og_data_path='players.csv'):
+def integrateStartGGPlayers(og_data_path='players.csv', reset_uid_ind = False):
     """
     Integrates player data from a CSV file using data fetched from the start.gg API.
 
@@ -173,7 +173,9 @@ def integrateStartGGPlayers(og_data_path='players.csv'):
     # Check for an existing data file and create or update accordingly
     if os.path.isfile('data\\players.csv'):
         df = pd.read_csv('data\\players.csv')
-        uid_ind = df.loc[:, 'uid'].max() + 1
+        df['startgg_pid'] = df['startgg_pid'].astype(int)
+        if reset_uid_ind:
+            df['uid'] = range(0, len(df))
     else:
         df = pd.DataFrame({
             'uid': [],
@@ -194,27 +196,26 @@ def integrateStartGGPlayers(og_data_path='players.csv'):
             'mixer_id': [],
             'xbox_id': []
         })
-        uid_ind = 0
 
     startgg = pd.read_csv(og_data_path)
 
     # Process each player in the CSV file
     for pid in startgg['player_id'].unique():
         # Only add if a new player id is encountered
-        if df.loc[df['startgg_pid'] == pid,:].empty:
+        if df.loc[df['startgg_pid'].astype(int) == pid,:].empty:
             data = fetchPlayerbyId(pid)
 
             if data:
                 new_data = processPlayerData(pid, data)
                 datetime_now = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+                uid_ind = df.loc[:, 'uid'].max() + 1
                 new_data.update({'uid': int(uid_ind), 'date_added': datetime_now})
-                uid_ind += 1
                 print(new_data)
                 new_row = pd.DataFrame([new_data])
                 df = pd.concat([df, new_row], axis=0, ignore_index=True)
                 # Save periodically after processing every 20 players
                 if uid_ind % 20 == 0:
-                    df.to_csv('data\\players.csv', index=False)
+                    df.to_csv('data\\new_players.csv', index=False)
                 sleep(0.5) # Sleep to prevent rate limiting
 
     df.to_csv('data\\players.csv', index=False)
@@ -224,6 +225,58 @@ def integrateStartGGPlayers(og_data_path='players.csv'):
 
     return df
 
+def return_current_datetime():
+    return datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+
+def extract_unique_values(df, id_col, value_col):
+    # Function to apply to each group
+    def get_unique_values(group):
+        unique_vals = sorted(group[value_col].unique())
+        first_val = unique_vals[0]  # Get the first unique value
+        other_vals = unique_vals[1:]  # Get the rest of the unique values
+        vals_list = {
+            'new_id': [first_val]* len(other_vals),
+            'old_id': other_vals
+        }
+        return pd.DataFrame(vals_list)
+    
+    # Group by id_col and apply the function
+    result = df.groupby(id_col).apply(get_unique_values).reset_index()
+    
+    return result
+
+def concat_id_matching(df, file_path='data\\ids.csv'):
+    df = df[['new_id', 'old_id']]
+    old_df = pd.read_csv(file_path)
+    df = pd.concat([old_df, df], axis=0, ignore_index=True).drop_duplicates(ignore_index=True)
+
+    return df
+
+def resolve_duplicates_strict(df, id_cols, newer_col):
+    id_matches = {
+        'new_id': [],
+        'old_id': []
+    }
+
+    for id_col in id_cols:
+        df = df.sort_values(by=[id_col, newer_col])
+        new_id_matches = extract_unique_values(df, id_col, newer_col)
+        id_matches['new_id'].extend(new_id_matches['new_id'])
+        id_matches['old_id'].extend(new_id_matches['old_id'])
+    
+    id_df = pd.DataFrame(id_matches)
+    
+    return id_df
+
 if __name__ == '__main__':
-    df = integrateStartGGPlayers(og_data_path='SF6\\all_sets.csv')
-    df = integrateStartGGPlayers('SFV\\all_sets.csv')
+    #df = integrateStartGGPlayers(og_data_path='SF6\\all_sets.csv', reset_uid_ind=True)
+    df = pd.read_csv('data\\new_players.csv')
+
+    match_cols = ['discord_id', 'twitch_id', 'twitter_id']
+
+    df2, df_ids = resolve_duplicates_strict(df, match_cols, 'uid')
+    df_ids = concat_id_matching(df_ids)
+    df = df.sort_values(['uid'])
+
+    df.to_csv('data\\players.csv', index=False)
+    df_ids.drop_duplicates().to_csv('data\\ids.csv', index=False)
