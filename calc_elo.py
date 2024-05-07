@@ -76,8 +76,13 @@ def eloPoolsFormula(ratings, wins, losses, k=30):
 
     return new_ratings
 
+def filter_by_list_content(df, column_name, value):
+    # Filter rows where 'value' is in the list of 'column_name'
+    mask = df[column_name].apply(lambda x: value.lower().replace(' ','') in str(x))
+    return df[mask]
+
 # Function to get user_id from dataframes
-def getSetElo(row, player_lookup, elo_lookup, name_match='all_matches.csv'):
+def getSetElo(row, player_lookup, elo_lookup):
     """
     Retrieve or initialize Elo rating for a player based on event and player lookup tables.
 
@@ -93,20 +98,20 @@ def getSetElo(row, player_lookup, elo_lookup, name_match='all_matches.csv'):
     standing = row['standing'][0]
     user_name = row['entrant_name'][0]
     event_id = row['event_id'][0]
+    source = row['source'][0]
+    startgg_pid = row['player_id'][0]
 
-    new_elo_flag = 0
-    matches = pd.read_csv(name_match)
-
-    # Search for user id if player has no id
-    if user_id in [0, -1]:
-        user_id = player_lookup[(player_lookup['entrant_name'] == user_name) & (player_lookup['event_id'] == event_id)]['user_id']
-        user_id2 = matches.loc[(matches['entrant_name_input'] == user_name), 'user_id_matched']
-        if not user_id2.empty:
-            user_id = user_id2.max()
-        elif not user_id.empty:
-            user_id = user_id.iloc[0]
-        else:
-            return None
+    if source == 'startgg':
+        check_uid = player_lookup.loc[player_lookup['startgg_pid'] == startgg_pid, 'uid']
+        if not check_uid.empty:
+            user_id = check_uid.iloc[0]
+    elif source == 'Liquidpedia':
+        # Run check to see if split string matches
+        name_lower = user_name.lower().replace(' ','')
+        player_lookup['match_row'] = player_lookup['liquidpedia_name'].str.lower().str.replace(' ', '', regex=True).str.split("|")
+        check_uid = filter_by_list_content(player_lookup, 'match_row', name_lower)
+        if not check_uid.empty:
+            user_id = check_uid.loc[:, 'uid'].iloc[0]
 
     # Get Elo for event
     current_elo = elo_lookup[(elo_lookup['user_id'] == user_id) & (elo_lookup['event_id'] == event_id)]['elo']
@@ -115,7 +120,6 @@ def getSetElo(row, player_lookup, elo_lookup, name_match='all_matches.csv'):
         # Get most recent elo value
         current_elo = elo_lookup[elo_lookup['user_id'] == user_id]['elo'].iloc[-1:]
         if current_elo.empty:
-            new_elo_flag = 1
             elo = 200
         else:
             elo = current_elo.iloc[0]
@@ -126,8 +130,7 @@ def getSetElo(row, player_lookup, elo_lookup, name_match='all_matches.csv'):
             'standing': standing,
             'user_name': user_name,
             'event_id': event_id,
-            'elo': elo,
-            'new_elo_flag': new_elo_flag}
+            'elo': elo}
 
 def reviseElo(user_id_1, user_id_2, elo1, elo2, event_id, elo_lookup):
     """
@@ -218,7 +221,6 @@ def calcEloForEvent(df, event_id, elo_lookup, player_lookup, event_comptiers):
     df_events = df.loc[df['event_id'] == event_id]
     sets = df_events.set_id.unique()
     comp_tier = event_comptiers.loc[event_comptiers['event_id'] == event_id, 'competition_tier']
-    print(comp_tier)
     
     if comp_tier.empty:
         comp_tier = 5
@@ -257,9 +259,10 @@ def getEventList(path):
     pandas.DataFrame: DataFrame containing columns for 'start_at' (event start date) and 'event_id', sorted by 'start_at'.
     """
     events = pd.read_csv(path)[['start_at', 'event_id']].sort_values('start_at')
+    print(events)
     return events
 
-def calcEloWrapper(set_path='all_sets.csv', player_path='players.csv', event_path='events.csv',
+def calcEloWrapper(set_path='all_sets.csv', player_path='data\\players.csv', event_path='events.csv',
                    elo_path='elo_records.csv', current_elo_path='current_elo.csv'):
     """
     Processes Elo rating updates for all events specified in a given imported dataframe. It reads the event, player, and set data,
@@ -279,41 +282,13 @@ def calcEloWrapper(set_path='all_sets.csv', player_path='players.csv', event_pat
 
     for event_id in events.event_id:
         elo_lookup = calcEloForEvent(df, event_id, elo_lookup, player_lookup, event_comptiers)
-        print(elo_lookup)
 
     elo_lookup.to_csv(elo_path, index=False)
     current_elo = elo_lookup.sort_values(by="event_id").drop_duplicates(subset=["user_id"], keep="last")
-    p_uniques = player_lookup[['user_id', 'entrant_name']].drop_duplicates(subset=["user_id"], keep="last")
+    p_uniques = player_lookup[['user_id', 'player_name']].drop_duplicates(subset=["user_id"], keep="last")
     current_elo = current_elo.merge(p_uniques, how='left', on='user_id')
     current_elo.to_csv(current_elo_path, index=False)
-
-def calcEventParticipation(elo_records='elo_records.csv', event_path='events.csv'):
-    """
-    Calculates and prints the count of participants in events grouped by their competition tier, based on the Elo ratings record.
-
-    Args:
-    elo_records (str, optional): Path to the CSV file containing Elo records. Defaults to 'elo_records.csv'.
-    event_path (str, optional): Path to the CSV file containing event information. Defaults to 'events.csv'.
-    """
-    events = pd.read_csv(event_path).sort_values('start_at', ascending=True)
-    elo_df = pd.read_csv(elo_records)
-
-    tiers = ['tier1', 'tier2', 'tier3', 'tier5']
-
-    elo_df['tier1'] = 0
-    elo_df['tier2'] = 0
-    elo_df['tier3'] = 0
-    elo_df['tier5'] = 0
-
-    tier_mapping = {
-        1: 'tier1',
-        2: 'tier2',
-        3: 'tier3',
-        5: 'tier5'
-    }
-
-    # ToDO: need to calculate sum of each amount of tiers user participated in to date for each elo record
         
 if __name__ == '__main__':
-    calcEloWrapper(set_path='SFV\\all_sets.csv', player_path='SFV\\players.csv', event_path='SFV\\events.csv',
-                    elo_path='SFV\\elo_records.csv', current_elo_path='SFV\\current_elo.csv')
+    calcEloWrapper(set_path='data\\all_sets.csv', player_path='data\\players.csv', event_path='data\\events.csv',
+                    elo_path='data\\elo_records.csv', current_elo_path='data\\current_elo.csv')
