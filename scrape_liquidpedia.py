@@ -291,7 +291,7 @@ def getUserId(name_string, event_id, matched_players, players):
 
     new_id = matched_players.loc[matched_players['entrant_name_input'] == name_string, 'user_id_matched'].min()
 
-    if new_id == np.nan:
+    if new_id == np.nan or new_id in [0, -1]:
         new_id, matched_players, players = assignIDToMatchingTable(name_string, event_id, matched_players, players)
     
     return new_id, matched_players, players
