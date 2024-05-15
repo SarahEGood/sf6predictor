@@ -457,6 +457,6 @@ def integrateSets(brackets_data='brackets.csv', data='all_sets.csv', players_pat
         sets.to_csv('test.csv', index=False)
 
 if __name__ == '__main__':
-    #scrapeAll("scrape_brackets.csv")
+    scrapeAll("scrape_brackets.csv")
     addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='players.csv', test=False)
     integrateSets(test=False)
