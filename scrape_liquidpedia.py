@@ -7,6 +7,17 @@ import re
 import numpy as np
 
 def writeBracketsToCsv(csv_file, tournament_data, event_id):
+    """
+    Write bracket data to a CSV file.
+
+    Args:
+        csv_file (str): Path to the CSV file to write.
+        tournament_data (list): List of dictionaries containing match win/loss data.
+        event_id (int): ID of the event from original list.
+
+    Returns:
+        None
+    """
     with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         writer.writerow(['Player 1', 'Result 1', 'Player 2', 'Result 2', 'Event Id'])
@@ -24,6 +35,17 @@ def writeBracketsToCsv(csv_file, tournament_data, event_id):
     print('Data has been written to CSV.')
 
 def writePoolsToCsv(csv_file, tournament_data, event_id):
+    """
+    Write data from fighting game pools (where brackets are not given) to a CSV file.
+
+    Args:
+        csv_file (str): Path to the CSV file to write.
+        tournament_data (list): List of player data with wins/losses per pool.
+        event_id (int): ID of the event from original list.
+
+    Returns:
+        None
+    """
     # Open the file in write mode
     with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
@@ -151,6 +173,16 @@ def scrapePools(url, event_name, event_id):
     writePoolsToCsv(file_name, data, event_id)
 
 def process_row(row):
+    """
+    Process each row of Liquipedia data and call the corresponding scraping function.
+
+    Args:
+        row (pd.Series): Row of data containing information about the scraping task.
+        Must include 'event_name', 'event_id', and 'func_type' as columns.
+
+    Returns:
+        None
+    """
     print(type(row))
     print(row)
     function_mapping = {
@@ -169,6 +201,15 @@ def process_row(row):
         func_to_call(url, event_name, event_id)  # Call the function
 
 def scrapeAll(input_path):
+    """
+    Scrape Liquipedia data from URLs specified in a CSV file.
+
+    Args:
+        input_path (str): Path to the input CSV file.
+
+    Returns:
+        None
+    """
     # Read csv of data to scrape
     df = pd.read_csv(input_path)
     
@@ -260,13 +301,13 @@ def addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='players.c
 
 def checkIDSeries(ids):
     """
-    Checks if a series has a value. If so, return first value. Else, return nan
+    Checks if a series has a value. If so, return first value. Else, return NaN.
 
     Args:
-    ids (series): Series of user_id values from the all_sets table
+        ids (pd.series): Series of user_id values from the all_sets table
 
     Returns:
-    If a series is NOT empty, returns first value. Else, returns a numpy NaN value.
+        int or np.nan: The user_id if the series is not empty, else NaN.
     """
     if len(ids) > 0:
         id = ids.iloc[0]
@@ -415,7 +456,7 @@ def integrateSets(brackets_data='brackets.csv', data='all_sets.csv', players_pat
         print(sets)
         sets.to_csv('test.csv', index=False)
 
-
-#scrapeAll("scrape_brackets.csv")
-addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='players.csv', test=False)
-integrateSets(test=False)
+if __name__ == '__main__':
+    #scrapeAll("scrape_brackets.csv")
+    addPlayersFromLiquidpedia(df_path='all_matches.csv', players_path='players.csv', test=False)
+    integrateSets(test=False)
