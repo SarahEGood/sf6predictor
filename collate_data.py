@@ -1,15 +1,11 @@
 import pandas as pd
-import numpy as np
 import os
 from time import sleep, time
 from datetime import datetime
 from extract_startgg_data import startgg_vars, retryStrategy
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from rapidfuzz import process, fuzz
-from concurrent.futures import ThreadPoolExecutor
-import math
 
 def safe_get(d, keys, default=None):
     """
