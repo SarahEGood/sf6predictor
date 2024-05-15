@@ -17,26 +17,34 @@ Before installation, ensure you have Python 3.11 installed on your system. You c
 ### Steps
 1. **Clone the Repositiory:** Clone this repositiory to your local machine using:
 
-    git clone https://github.com/SarahEGood/sf6predictor
+```bash
+git clone https://github.com/SarahEGood/sf6predictor
+```
 
 2. **Environment Setup:** Set up a virtual environment:
-    python -m venv sf6-predictor-env
-    source sf6-predictor-env/bin/activate # On Windows use `sf6-predictor-env\Scripts\activate`
+```bash
+python -m venv sf6-predictor-env
+source sf6-predictor-env/bin/activate # On Windows use `sf6-predictor-env\Scripts\activate`
+```
 
 3. **Install Dependencies:** Install the required Python libraries:
-    pip install -r requirements.txt
-
+```bash
+pip install -r requirements.txt
+```
 4. **API Token:** Follow the instructions (here)[https://developer.start.gg/docs/authentication] to obtain a `start.gg` authentication token. Set this token as an environment variable:
-    export startgg_token='YOUR_TOKEN_HERE'  # On Windows use `set startgg_token=YOUR_TOKEN_HERE`
-
+```bash
+export startgg_token='YOUR_TOKEN_HERE'  # On Windows use `set startgg_token=YOUR_TOKEN_HERE`
+```
 
 ## Usage
 To run the full sequence from data extraction to predictions:
-    python extract_startgg_data.py
-    python scrape_liquidpedia.py
-    python collate_data.py
-    python calc_elo.py
-    jupyter notebook model_training.ipynb
+```bash
+python extract_startgg_data.py
+python scrape_liquidpedia.py
+python collate_data.py
+python calc_elo.py
+jupyter notebook model_training.ipynb
+```
 
 ## License
 The Street Figther 6 Bracket Predictor is available under the MIT license. See the LICENSE file for more info.
