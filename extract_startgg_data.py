@@ -729,23 +729,39 @@ def fetchAllSetsWrapper(videogame_id, events_path='events.csv', sets_path='all_s
         Note: This needs to be refactored to allow selection of different data. 
     """
 
+    # For logging runtime
     start_time = time()
 
+    # Get events by videogame id
     df = eventsByVideogame(videogame_id, events_path, integrateLiquid=integrateLiquid)
     events = df[df['source'] == 'startgg']['event_id']
+
+    # Get all sets by list of event_ids
     main = getAllSets(events, sets_path = sets_path)
     main.to_csv(sets_path, index=False)
     main = main[pd.to_numeric(main['set_id'], errors='coerce').notnull()]
+
+    # Get player data from set table
     players = getPlayersFromSets(main)
     players.to_csv(players_path, index=False)
 
+    # Update events and integrate Liquipedia data if true
     export_me = updateEvent(df, videogame_id = videogame_id)
-    export_me = integrateLiquidpedia(df)
+
+    if integrateLiquid == True:
+        export_me = integrateLiquidpedia(df)
     export_me.to_csv('data\\events.csv', index=False)
 
+    # Export runtime
     hours = round((time() - start_time)/60, 2)
     print("All set total runtime: {} hours".format(hours))
 
 if __name__ == '__main__':
+    # Init dirs if not exist
+    os.makedirs(os.path.dirname('SF6\\events.csv', exist_ok=True))
+    os.makedirs(os.path.dirname('SFV\\events.csv', exist_ok=True))
+    os.makedirs(os.path.dirname('data\\events.csv', exist_ok=True))
+
+    # Fetch relevant sets
     fetchAllSetsWrapper(43868, 'SF6\\events.csv', 'SF6\\all_sets.csv', 'SF6\\players.csv')
-    #fetchAllSetsWrapper(10055, 'SFV\\events.csv', 'SFV\\all_sets.csv', 'SFV\\players.csv')
+    fetchAllSetsWrapper(10055, 'SFV\\events.csv', 'SFV\\all_sets.csv', 'SFV\\players.csv')
