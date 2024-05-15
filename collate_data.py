@@ -345,22 +345,39 @@ def insert_new(df, player_list, label, id_label):
 
     return df
 
+def concat_sf_data(sf6_file, sf5_file, event=False):
+    """
+    Function to merge SF6 and SFV data for all_sets.csv or events.csv files.
+
+    Args:
+    sf6_file: First filepath to csv
+    sf5_file: Second filepath to csv
+    event: Set to True if merging events.csv data (default: False) 
+
+    Returns:
+    df1: Concatenated dataframe of both files' data
+    """
+    df1 = pd.read_csv(sf6_file)
+    df2 = pd.read_csv(sf5_file)
+
+    if event:
+        df1['game'] = 'SF6'
+        df2['game'] = 'SFV'
+
+    df1 = pd.concat([df1, df2], ignore_index=True)
+
+    if event:
+        df1 = df1.sort_values(['start_at', 'event_id'], ascending=[True, True])
+
+    return df1
+
 if __name__ == '__main__':
     df = integrateStartGGPlayers(og_data_path='SFV\\all_sets.csv', reset_uid_ind=True)
 
-    sets1 = pd.read_csv('SF6\\all_sets.csv')
-    sets2 = pd.read_csv('SFV\\all_sets.csv')
+    sets = concat_sf_data('SF6\\all_sets.csv', 'SFV\\all_sets.csv', events=False)
+    events = concat_sf_data('SF6\\events.csv', 'SFV\\events.csv', events=True)
 
-    events1 = pd.read_csv('SF6\\events.csv')
-    events2 = pd.read_csv('SFV\\events.csv')
-
-    events1['game'] = 'SF6'
-    events2['game'] = 'SFV'
-
-    sets1 = pd.concat([sets1, sets2], ignore_index=True)
-    sets1.to_csv('data\\all_sets.csv', index=False)
-
-    events = pd.concat([events1, events2], ignore_index=True).sort_values(['start_at', 'event_id'], ascending=[True, True])
+    sets.to_csv('data\\all_sets.csv', index=False)
     events.to_csv('data\\events.csv', index=False)
 
     match_cols = ['discord_id', 'twitch_id', 'twitter_id']
