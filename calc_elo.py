@@ -262,6 +262,23 @@ def getEventList(path):
     print(events)
     return events
 
+def getCurrentELO(df, output_path='data/current_elo.csv'):
+    # Calculate cumulative sums for each `tier` column grouped by `user_id`
+    elo = df.copy()
+    elo[['cumulative_tier1', 'cumulative_tier2', 'cumulative_tier3', 'cumulative_tier5']] = elo.groupby('user_id')[['tier1', 'tier2', 'tier3', 'tier5']].cumsum()
+
+    # Extract the current elo value for each user_id (last entry for each user_id)
+    current_elo = elo.groupby('user_id')['elo'].last().reset_index()
+    current_elo.columns = ['user_id', 'current_elo']
+
+    # Merge the cumulative sums and current elo value
+    cumulative_sums = elo.groupby('user_id').last().reset_index()
+    cumulative_sums = cumulative_sums[['user_id', 'cumulative_tier1', 'cumulative_tier2', 'cumulative_tier3', 'cumulative_tier5']]
+    final_df = pd.merge(current_elo, cumulative_sums, on='user_id')
+
+    # Save the final table as a downloadable .csv file
+    final_df.to_csv(output_path, index=False)
+
 def calcEloWrapper(set_path='all_sets.csv', player_path='data\\players.csv', event_path='events.csv',
                    elo_path='elo_records.csv', current_elo_path='current_elo.csv'):
     """
@@ -284,10 +301,7 @@ def calcEloWrapper(set_path='all_sets.csv', player_path='data\\players.csv', eve
         elo_lookup = calcEloForEvent(df, event_id, elo_lookup, player_lookup, event_comptiers)
 
     elo_lookup.to_csv(elo_path, index=False)
-    current_elo = elo_lookup.sort_values(by="event_id").drop_duplicates(subset=["user_id"], keep="last")
-    p_uniques = player_lookup[['user_id', 'player_name']].drop_duplicates(subset=["user_id"], keep="last")
-    current_elo = current_elo.merge(p_uniques, how='left', on='user_id')
-    current_elo.to_csv(current_elo_path, index=False)
+    getCurrentELO(elo_lookup, index=False)
         
 if __name__ == '__main__':
     calcEloWrapper(set_path='data\\all_sets.csv', player_path='data\\players.csv', event_path='data\\events.csv',
