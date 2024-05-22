@@ -301,7 +301,7 @@ def calcEloWrapper(set_path='all_sets.csv', player_path='data\\players.csv', eve
         elo_lookup = calcEloForEvent(df, event_id, elo_lookup, player_lookup, event_comptiers)
 
     elo_lookup.to_csv(elo_path, index=False)
-    getCurrentELO(elo_lookup, index=False)
+    getCurrentELO(elo_lookup)
         
 if __name__ == '__main__':
     calcEloWrapper(set_path='data\\all_sets.csv', player_path='data\\players.csv', event_path='data\\events.csv',
