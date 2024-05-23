@@ -311,8 +311,5 @@ def calcEloWrapper(set_path='all_sets.csv', player_path='data\\players.csv', eve
     getCurrentELO(elo_lookup)
         
 if __name__ == '__main__':
-    #calcEloWrapper(set_path='data\\all_sets.csv', player_path='data\\players.csv', event_path='data\\events.csv',
-    #                elo_path='data\\elo_records.csv', current_elo_path='data\\current_elo.csv')
-    
-    df = pd.read_csv("data\\elo_records.csv")
-    getCurrentELO(df)
+    calcEloWrapper(set_path='data\\all_sets.csv', player_path='data\\players.csv', event_path='data\\events.csv',
+                    elo_path='data\\elo_records.csv', current_elo_path='data\\current_elo.csv')
