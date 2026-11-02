@@ -1,74 +1,144 @@
 # Street Fighter 6 Bracket Predictor
 
-This project aims to predict tournament results for Street Fighter 6 using historical match data from Street Fighter V and 6.
+An exploratory Python project investigating whether historical tournament results and participation records can predict the winner of a Street Fighter 6 set.
+
+The project combines start.gg API extraction, Liquipedia scraping, player identity matching, Elo calculations, and experiments with Lasso regression, Tweedie regression, and a multilayer perceptron classifier.
+
+## Project status
+
+Development was discontinued. The repository preserves exploratory work and requires repairs before the full pipeline can be run reliably. It should not be treated as a finished bracket simulator or a validated forecasting tool.
+
+The saved evaluations use random train/test splits and contain feature-timing, preprocessing, and evaluation problems. Their scores do not establish accuracy on future tournaments.
+
+[Read the project case study](case_study.md)
+
+*Placeholder: replace `CASE_STUDY_LINK_TODO` with the case study's final URL or repository-relative path before publishing.*
 
 ## How it works
 
-* **Data Extraction:** Extract player, event, and match result data for both Street Fighter V and VI from start.gg within API limits using `extract_startgg_data.py`.
-* **Data Scraping:** Scrape additional data from Liquipedia using a manually compiled CSV file containing tournament names and URLs with `scrape_liquidpedia.py`.
-* **Data Collation:** Extract more detailed player data from start.gg and merge all extracted and scraped data into consolidated tables using `collate_data.py`.
-* **ELO Calculation:** Compute ELO ratings and tournament participation statistics for every player for each event they participated in using `calc_elo.py`.
-* **Model Training:** Train a machine learning model to predict match outcomes based on the data gathered and processed in previous steps using `model_training.ipynb`.
+| Component | Purpose |
+| --- | --- |
+| `extract_startgg_data.py` | Retrieves tournament, set, and player records from start.gg using its GraphQL API. The script targets both SF6 and Street Fighter V. |
+| `collate_data.py` | Combines start.gg records and reconciles player identities using additional player information. |
+| `scrape_liquidpedia.py` | Scrapes supported Liquipedia bracket and pool formats and contains functions for integrating scraped records. |
+| `fuzzy_match_liquidpedia.ipynb` | Contains the cross-source player-name matching workflow. |
+| `calc_elo.py` | Calculates event-level Elo records and tournament participation statistics from collected records. |
+| `model_training.ipynb` | Prepares paired-player features and evaluates Lasso, Tweedie, and MLP experiments on a binary set-outcome target. |
 
-## Install
-### Prerequisites
-Before installation, ensure you have Python 3.11 installed on your system. You can download Python [here](https://www.python.org/downloads/).
+Features include Elo, participation counts by tournament tier, total participation, and an attempted days-between-events measure. The interval calculation needs correction.
 
-### Steps
-1. **Clone the Repository:** Clone this repository to your local machine using:
+Although SFV data is collected, the modeling notebook filters event metadata to SF6. The extent to which SFV results influenced upstream Elo records still needs confirmation.
+
+## Local setup
+
+The original README specifies Python 3.11. The commands below prepare an environment for inspecting and repairing the project; they are not a verified end-to-end reproduction procedure.
+
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/SarahEGood/sf6predictor
-```
-
-2. **Environment Setup:** Set up a virtual environment:
-```bash
+git clone https://github.com/SarahEGood/sf6predictor.git
+cd sf6predictor
 python -m venv sf6-predictor-env
-source sf6-predictor-env/bin/activate # On Windows use `sf6-predictor-env\Scripts\activate`
 ```
 
-3. **Install Dependencies:** Install the required Python libraries:
+Activate the environment using the command for your shell.
+
+**macOS or Linux:**
+
 ```bash
-pip install -r requirements.txt
+source sf6-predictor-env/bin/activate
 ```
-4. **API Token:** Before you can extract any start.gg data from the start.gg API, you will need an API token. Follow the instructions [here](https://developer.start.gg/docs/authentication) to obtain a `start.gg` authentication token. Set this token as an environment variable:
-```bash
-export startgg_token='YOUR_TOKEN_HERE'  # On Windows use `set startgg_token=YOUR_TOKEN_HERE`
+
+**Windows Command Prompt:**
+
+```bat
+sf6-predictor-env\Scripts\activate.bat
 ```
 
-5. **Setup Liquipedia Webscraping (Optional):** If you wish to also use Liquipedia tournaments, you will need to manually create a file called `scrape_brackets.csv` to include the urls and other data you want to scrape from Liquipedia. Please note that the current scraping code supports individual tournaments only; group events are not supported. Ensure that the file includes the following columns:
-* event_id: An integer less than 1000, unique for each event. Reuse this ID if an event has multiple pages for scraping.
-* url: The URL to the page that needs to be scraped.
-* event_name: The name of tournament.
-* comptier: The competitive tier assigned by Liquipedia for the tournament.
-* func_type: An integer that determines which function to use.
-    * If only brackets are displayed, set `func_type` to 1.
-    * If pools are displayed with expandable match data, set `func_type` to 2.
-    * If aggregate pools data is displayes with no specific match data (i.e. you know who won the pool but not specifically who they matched against), use `func_type` 3.
-* date: The date of tournament's last day.
-* country: The country of tournament (optional)
-* city: The city of tournament (optional)
-* state: The state or province of tournament. Should follow ANSI 2-letter code. (optional)
+**Windows PowerShell:**
 
-This is an example setup for this csv:
+```powershell
+.\sf6-predictor-env\Scripts\Activate.ps1
+```
 
-|event_id|url                                                          |event_name        |comptier|func_type|date       |country|city  |state|
-|--------|-------------------------------------------------------------|------------------|--------|---------|-----------|-------|------|-----|
-|0       | https://liquipedia.net/fighters/Abang_Bald_Cup/5/Group_Stage| Abang Bald Cup #5|2       |1        | 2024-28-02|       |      |     |
-|0       | https://liquipedia.net/fighters/Abang_Bald_Cup/5/Bracket    | Abang Bald Cup #5|2       |1        | 2024-28-02|       |      |     |
-|1       | https://liquipedia.net/fighters/Keio_Cup/2024/Bracket       | Keio Cup         |2       |1        | 2024-28-01|JP     |Tokyo |     |
-|2       | https://liquipedia.net/fighters/Gamers8/2023/SF6/Group_Stage| Gamers 8 2023    |1       |2        | 2023-09-13|SA     |Riyadh|     |
-|2       | https://liquipedia.net/fighters/Gamers8/2023/SF6/Playoffs   | Gamers 8 2023    |1       |1        | 2023-09-13|SA     |Riyadh|     |
+### 2. Install dependencies
 
-## Usage
-To run the full sequence from data extraction to predictions, run the following from the project directory:
 ```bash
-python extract_startgg_data.py
-python collate_data.py
-python scrape_liquidpedia.py # Only run if scrape_brackets.csv is setup
-python calc_elo.py
+python -m pip install -r requirements.txt
+python -m pip install beautifulsoup4 notebook
+```
+
+The current requirements file pins NumPy, pandas, RapidFuzz, Requests, scikit-learn, and urllib3. It does not declare BeautifulSoup, which the scraper imports, or Jupyter Notebook, which is needed for the notebook interface shown here. Installing these additional packages does not resolve the pipeline issues described below.
+
+### 3. Configure start.gg authentication
+
+Obtain a token using the [start.gg authentication documentation](https://developer.start.gg/docs/authentication), then set the `startgg_token` environment variable in the shell where you will run the extraction code.
+
+**macOS or Linux:**
+
+```bash
+export startgg_token='YOUR_TOKEN_HERE'
+```
+
+**Windows Command Prompt:**
+
+```bat
+set "startgg_token=YOUR_TOKEN_HERE"
+```
+
+**Windows PowerShell:**
+
+```powershell
+$env:startgg_token = 'YOUR_TOKEN_HERE'
+```
+
+## Liquipedia inputs
+
+The scraper uses a manually prepared `scrape_brackets.csv` containing tournament URLs and metadata. It has separate handlers for brackets, groups with match details, and aggregate pool results; compatibility depends on the page format.
+
+Include these columns:
+
+| Column | Description |
+| --- | --- |
+| `event_id` | Locally assigned event identifier. Reuse it for pages belonging to the same event, and check downstream ID assumptions before assigning values. |
+| `url` | Liquipedia page URL. |
+| `event_name` | Tournament or event name. |
+| `comptier` | Competition tier used by the project's event metadata. |
+| `func_type` | `1` for the bracket handler, `2` for the groups handler, or `3` for the aggregate pools handler. |
+| `date` | Event date in an unambiguous format such as `YYYY-MM-DD`. Repeated pages for an event should use consistent metadata. |
+| `country` | Country; retain the column even if values are blank. |
+| `city` | City; retain the column even if values are blank. |
+| `state` | State or province; retain the column even if values are blank. |
+
+Liquipedia processing also relies on intermediate files and player mappings. Creating this CSV alone does not make the integration ready to run. Aggregate pool results are not equivalent to observed head-to-head set records.
+
+## Running and reproducing the project
+
+The intended workflow is:
+
+1. Collect start.gg records.
+2. Collate event, set, and player data.
+3. Prepare player mappings and integrate Liquipedia records where applicable.
+4. Calculate Elo and participation features.
+5. Open `model_training.ipynb` for model preparation and evaluation.
+
+The current repository does not provide a reliable one-command or sequential-script reproduction path. Before attempting the complete workflow:
+
+- Repair the extraction script's directory creation: `exist_ok=True` is passed to `os.path.dirname` instead of `os.makedirs`.
+- Reconcile Windows-style paths and inconsistent intermediate-file locations. The collation and modeling code use files under `data`, while parts of the scraper expect files in the project root and an `sf6folder` directory.
+- Prepare the required input CSVs and matching files. The Liquipedia integration is a separate preparation workflow, not a fully automated optional step.
+- Review identifier handling. The modeling notebook contains a hard-coded event-ID split at 60, so the old instruction to use any Liquipedia event ID below 1000 is insufficient.
+- Correct feature timing, player joins, event intervals, and evaluation logic before interpreting model scores. Feature selection must be fitted on training data, and forecasting evaluation should hold out later events.
+
+With the notebook's required input files available, open it using:
+
+```bash
 jupyter notebook model_training.ipynb
 ```
 
+Saved notebook outputs document earlier experiments; they are not evidence that the current pipeline reproduces those results unchanged. See the case study for the results and methodological limitations.
+
 ## License
-The Street Fighter 6 Bracket Predictor is available under the MIT license. See the LICENSE file for more info.
+
+This project is available under the [MIT License](LICENSE).
+
