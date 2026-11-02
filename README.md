@@ -12,8 +12,6 @@ The saved evaluations use random train/test splits and contain feature-timing, p
 
 [Read the project case study](case_study.md)
 
-*Placeholder: replace `CASE_STUDY_LINK_TODO` with the case study's final URL or repository-relative path before publishing.*
-
 ## How it works
 
 | Component | Purpose |
